@@ -1,0 +1,620 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mongodb"
+  url      = env("DATABASE_URL")
+}
+
+// ===================== ENUMS =====================
+
+enum UserRole {
+  SUPER_ADMIN
+  OWNER
+  CUSTOMER
+  STAFF
+}
+
+enum BusinessType {
+  HOTEL
+  RESTAURANT
+  BOTH
+}
+
+enum SubscriptionPlan {
+  MONTHLY
+  YEARLY
+}
+
+enum SubscriptionStatus {
+  ACTIVE
+  TRIAL
+  EXPIRED
+  CANCELLED
+}
+
+enum RoomType {
+  SINGLE
+  DOUBLE
+  SUITE
+  DELUXE
+  PRESIDENTIAL
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CHECKED_IN
+  CHECKED_OUT
+  CANCELLED
+  NO_SHOW
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  PARTIAL
+  REFUNDED
+  FAILED
+}
+
+enum PaymentMethod {
+  ONLINE
+  OFFLINE
+  PARTIAL
+}
+
+enum MenuCategory {
+  STARTER
+  MAIN_COURSE
+  DESSERT
+  BEVERAGE
+  SNACK
+  SPECIAL
+}
+
+enum SpiceLevel {
+  MILD
+  MEDIUM
+  HOT
+  EXTRA_HOT
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PREPARING
+  READY
+  DELIVERED
+  CANCELLED
+}
+
+enum OrderType {
+  DINE_IN
+  ROOM_SERVICE
+  TAKEAWAY
+}
+
+enum QRCodeType {
+  TABLE_MENU
+  HOTEL_MENU
+  HOTEL_BOOKING
+}
+
+enum StaffRole {
+  RECEPTIONIST
+  WAITER
+  MANAGER
+  CHEF
+}
+
+enum NotificationType {
+  NEW_BOOKING
+  BOOKING_CANCELLED
+  BOOKING_CONFIRMED
+  NEW_ORDER
+  ORDER_READY
+  PAYMENT_RECEIVED
+  REVIEW_POSTED
+  SUBSCRIPTION_EXPIRING
+  SUBSCRIPTION_EXPIRED
+  SYSTEM
+}
+
+enum CouponType {
+  PERCENTAGE
+  FIXED
+}
+
+// ===================== MODELS =====================
+
+model User {
+  id            String    @id @default(auto()) @map("_id") @db.ObjectId
+  email         String    @unique
+  password      String?
+  name          String
+  phone         String?
+  image         String?
+  role          UserRole  @default(CUSTOMER)
+  emailVerified DateTime?
+  isActive      Boolean   @default(true)
+
+  // Relations
+  business      Business?
+  accounts      Account[]
+  sessions      Session[]
+  bookings      Booking[]
+  orders        Order[]
+  reviews       Review[]
+  auditLogs     AuditLog[]
+  notifications Notification[]
+  staffMember   StaffMember?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Account {
+  id                String  @id @default(auto()) @map("_id") @db.ObjectId
+  userId            String  @db.ObjectId
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String?
+  access_token      String?
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String?
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+}
+
+model Session {
+  id           String   @id @default(auto()) @map("_id") @db.ObjectId
+  sessionToken String   @unique
+  userId       String   @db.ObjectId
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model VerificationToken {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  identifier String
+  token      String
+  expires    DateTime
+
+  @@unique([identifier, token])
+}
+
+model Business {
+  id                 String             @id @default(auto()) @map("_id") @db.ObjectId
+  slug               String             @unique
+  name               String
+  type               BusinessType
+  ownerId            String             @unique @db.ObjectId
+  owner              User               @relation(fields: [ownerId], references: [id])
+
+  // Subscription
+  subscriptionPlan   SubscriptionPlan?
+  subscriptionStatus SubscriptionStatus @default(TRIAL)
+  subscriptionStartDate DateTime?
+  subscriptionEndDate   DateTime?
+  trialEndsAt        DateTime?
+
+  // Business Info
+  logo               String?
+  coverImage         String?
+  description        String?
+  address            String?
+  city               String?
+  state              String?
+  country            String             @default("India")
+  pincode            String?
+  phone              String?
+  email              String?
+  website            String?
+
+  // Razorpay
+  razorpayAccountId  String?
+
+  // Status
+  isVerified         Boolean            @default(false)
+  isActive           Boolean            @default(true)
+  isFeatured         Boolean            @default(false)
+
+  // API Key
+  apiKey             String?            @unique
+
+  // Relations
+  rooms              Room[]
+  menuItems          MenuItem[]
+  tables             Table[]
+  bookings           Booking[]
+  orders             Order[]
+  qrCodes            QRCode[]
+  settings           BusinessSettings?
+  subscriptions      Subscription[]
+  notifications      Notification[]
+  reviews            Review[]
+  coupons            Coupon[]
+  expenses           Expense[]
+  staffMembers       StaffMember[]
+  auditLogs          AuditLog[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model BusinessSettings {
+  id                    String   @id @default(auto()) @map("_id") @db.ObjectId
+  businessId            String   @unique @db.ObjectId
+  business              Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  // Payment
+  acceptOnlinePayment   Boolean  @default(true)
+  acceptOfflinePayment  Boolean  @default(true)
+
+  // Bookings
+  autoConfirmBookings   Boolean  @default(false)
+  checkInTime           String   @default("14:00")
+  checkOutTime          String   @default("11:00")
+
+  // Financial
+  currencyCode          String   @default("INR")
+  taxPercentage         Float    @default(18)
+
+  // Notifications
+  notificationEmail     String?
+  whatsappNumber        String?
+
+  // Theme
+  customThemeColor      String?
+  customFont            String?
+
+  // Features
+  foodModuleEnabled     Boolean  @default(true)
+  onlineOrderingEnabled Boolean  @default(true)
+
+  // Operating Hours (JSON string)
+  operatingHours        String?
+
+  updatedAt DateTime @updatedAt
+}
+
+model Room {
+  id            String   @id @default(auto()) @map("_id") @db.ObjectId
+  businessId    String   @db.ObjectId
+  business      Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  name          String
+  roomNumber    String
+  type          RoomType
+  description   String?
+  pricePerNight Float
+  maxOccupancy  Int
+  images        String[]
+  amenities     String[]
+  floor         Int?
+
+  isAvailable   Boolean  @default(true)
+  isActive      Boolean  @default(true)
+
+  bookings      Booking[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Booking {
+  id             String        @id @default(auto()) @map("_id") @db.ObjectId
+  businessId     String        @db.ObjectId
+  business       Business      @relation(fields: [businessId], references: [id])
+  roomId         String        @db.ObjectId
+  room           Room          @relation(fields: [roomId], references: [id])
+  customerId     String?       @db.ObjectId
+  customer       User?         @relation(fields: [customerId], references: [id])
+
+  // Guest info (for non-registered guests)
+  guestName      String
+  guestPhone     String
+  guestEmail     String?
+  adults         Int           @default(1)
+  children       Int           @default(0)
+
+  // Dates
+  checkIn        DateTime
+  checkOut       DateTime
+  nights         Int
+
+  // Financial
+  totalAmount    Float
+  discountAmount Float         @default(0)
+  couponCode     String?
+  finalAmount    Float
+
+  // Payment
+  paymentStatus  PaymentStatus @default(PENDING)
+  paymentMethod  PaymentMethod?
+  razorpayOrderId   String?
+  razorpayPaymentId String?
+
+  // Status
+  status         BookingStatus @default(PENDING)
+
+  // Notes
+  specialRequests String?
+  notes          String?
+
+  // Food orders during stay
+  foodOrders     Order[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model MenuItem {
+  id              String       @id @default(auto()) @map("_id") @db.ObjectId
+  businessId      String       @db.ObjectId
+  business        Business     @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  name            String
+  description     String?
+  price           Float
+  category        MenuCategory
+  image           String?
+
+  isVeg           Boolean      @default(true)
+  isAvailable     Boolean      @default(true)
+  isActive        Boolean      @default(true)
+  isFeatured      Boolean      @default(false)
+
+  preparationTime Int          @default(15)
+  spiceLevel      SpiceLevel?
+  allergens       String[]
+  nutritionInfo   String?      // JSON string
+
+  orderItems      OrderItem[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Table {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  businessId  String   @db.ObjectId
+  business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  tableNumber String
+  capacity    Int
+  floor       Int?
+  section     String?
+  isActive    Boolean  @default(true)
+
+  qrCode      QRCode?
+  orders      Order[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Order {
+  id           String      @id @default(auto()) @map("_id") @db.ObjectId
+  businessId   String      @db.ObjectId
+  business     Business    @relation(fields: [businessId], references: [id])
+  customerId   String?     @db.ObjectId
+  customer     User?       @relation(fields: [customerId], references: [id])
+
+  tableId      String?     @db.ObjectId
+  table        Table?      @relation(fields: [tableId], references: [id])
+  roomId       String?     @db.ObjectId
+  bookingId    String?     @db.ObjectId
+  booking      Booking?    @relation(fields: [bookingId], references: [id])
+
+  // Guest info
+  guestName    String?
+  guestPhone   String?
+
+  // Items
+  items        OrderItem[]
+
+  // Financial
+  subtotal     Float
+  taxAmount    Float       @default(0)
+  discountAmount Float     @default(0)
+  couponCode   String?
+  totalAmount  Float
+
+  // Payment
+  paymentStatus PaymentStatus @default(PENDING)
+  paymentMethod PaymentMethod?
+  razorpayOrderId   String?
+  razorpayPaymentId String?
+
+  // Order info
+  status       OrderStatus @default(PENDING)
+  type         OrderType   @default(DINE_IN)
+
+  specialInstructions String?
+  notes         String?
+  estimatedTime Int?       // in minutes
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model OrderItem {
+  id             String   @id @default(auto()) @map("_id") @db.ObjectId
+  orderId        String   @db.ObjectId
+  order          Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItemId     String   @db.ObjectId
+  menuItem       MenuItem @relation(fields: [menuItemId], references: [id])
+
+  quantity       Int
+  unitPrice      Float
+  totalPrice     Float
+  customizations String[]
+  notes          String?
+}
+
+model QRCode {
+  id         String     @id @default(auto()) @map("_id") @db.ObjectId
+  businessId String     @db.ObjectId
+  business   Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  tableId    String?    @unique @db.ObjectId
+  table      Table?     @relation(fields: [tableId], references: [id])
+
+  type       QRCodeType
+  url        String
+  qrImageUrl String?
+  label      String?
+  isActive   Boolean    @default(true)
+  scanCount  Int        @default(0)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Subscription {
+  id                     String             @id @default(auto()) @map("_id") @db.ObjectId
+  businessId             String             @db.ObjectId
+  business               Business           @relation(fields: [businessId], references: [id])
+
+  plan                   SubscriptionPlan
+  status                 SubscriptionStatus
+  amount                 Float
+
+  razorpaySubscriptionId String?
+  razorpayPaymentId      String?
+
+  startDate              DateTime
+  endDate                DateTime
+  nextBillingDate        DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Notification {
+  id         String           @id @default(auto()) @map("_id") @db.ObjectId
+  businessId String?          @db.ObjectId
+  business   Business?        @relation(fields: [businessId], references: [id])
+  userId     String?          @db.ObjectId
+  user       User?            @relation(fields: [userId], references: [id])
+
+  type       NotificationType
+  title      String
+  message    String
+  isRead     Boolean          @default(false)
+  metadata   String?          // JSON string
+
+  createdAt DateTime @default(now())
+}
+
+model Review {
+  id          String   @id @default(auto()) @map("_id") @db.ObjectId
+  businessId  String   @db.ObjectId
+  business    Business @relation(fields: [businessId], references: [id])
+  userId      String?  @db.ObjectId
+  user        User?    @relation(fields: [userId], references: [id])
+
+  guestName   String
+  guestEmail  String?
+  rating      Int      // 1-5
+  comment     String?
+  ownerReply  String?
+  isApproved  Boolean  @default(false)
+  isFlagged   Boolean  @default(false)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model Coupon {
+  id           String     @id @default(auto()) @map("_id") @db.ObjectId
+  businessId   String     @db.ObjectId
+  business     Business   @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  code         String
+  type         CouponType
+  value        Float      // percentage or fixed amount
+  minOrderValue Float?
+  maxDiscount  Float?
+
+  usageLimit   Int?
+  usedCount    Int        @default(0)
+
+  validFrom    DateTime
+  validUntil   DateTime
+  isActive     Boolean    @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([businessId, code])
+}
+
+model Expense {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  businessId String   @db.ObjectId
+  business   Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
+
+  date       DateTime
+  category   String
+  amount     Float
+  description String?
+  receiptUrl String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model StaffMember {
+  id         String    @id @default(auto()) @map("_id") @db.ObjectId
+  businessId String    @db.ObjectId
+  business   Business  @relation(fields: [businessId], references: [id], onDelete: Cascade)
+  userId     String    @unique @db.ObjectId
+  user       User      @relation(fields: [userId], references: [id])
+
+  role       StaffRole
+  isActive   Boolean   @default(true)
+  inviteToken String?
+  joinedAt   DateTime?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+model AuditLog {
+  id         String   @id @default(auto()) @map("_id") @db.ObjectId
+  businessId String?  @db.ObjectId
+  business   Business? @relation(fields: [businessId], references: [id])
+  userId     String?  @db.ObjectId
+  user       User?    @relation(fields: [userId], references: [id])
+
+  action     String
+  entity     String
+  entityId   String?
+  oldValue   String?  // JSON
+  newValue   String?  // JSON
+  ipAddress  String?
+  userAgent  String?
+
+  createdAt DateTime @default(now())
+}
+
+model PlatformSettings {
+  id             String  @id @default(auto()) @map("_id") @db.ObjectId
+  key            String  @unique
+  value          String
+  description    String?
+  updatedAt      DateTime @updatedAt
+}
