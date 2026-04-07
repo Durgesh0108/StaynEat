@@ -47,8 +47,8 @@ export async function GET(req: NextRequest) {
           order: { businessId, createdAt: { gte: startDate } },
         },
         _count: { id: true },
-        _sum: { subtotal: true },
-        orderBy: { _sum: { subtotal: "desc" } },
+        _sum: { totalPrice: true },
+        orderBy: { _sum: { totalPrice: "desc" } },
         take: 5,
       }),
     ]);
@@ -84,7 +84,7 @@ export async function GET(req: NextRequest) {
     const topItemsWithNames = topItems.map((t) => ({
       name: nameMap[t.menuItemId] ?? "Unknown",
       count: t._count.id,
-      revenue: t._sum.subtotal ?? 0,
+      revenue: t._sum.totalPrice ?? 0,
     }));
 
     const revenueSplit = [];

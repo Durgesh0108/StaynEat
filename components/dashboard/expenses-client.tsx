@@ -34,7 +34,7 @@ type FormData = z.infer<typeof schema>;
 
 interface Expense {
   id: string;
-  description: string;
+  description: string | null;
   amount: number;
   category: string;
   date: Date;
@@ -201,7 +201,7 @@ export function ExpensesClient({ businessId, initialExpenses }: { businessId: st
             {filtered.map((expense) => (
               <div key={expense.id} className="flex items-center gap-4 p-4 hover:bg-gray-50 dark:hover:bg-gray-800/50 transition-colors">
                 <div className="flex-1 min-w-0">
-                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{expense.description}</p>
+                  <p className="text-sm font-medium text-gray-900 dark:text-white truncate">{expense.description ?? "—"}</p>
                   <div className="flex items-center gap-2 mt-0.5">
                     <span className="badge bg-gray-100 dark:bg-gray-800 text-gray-600 dark:text-gray-400 text-xs">{expense.category}</span>
                     <span className="text-xs text-gray-400">{format(new Date(expense.date), "dd MMM yyyy")}</span>

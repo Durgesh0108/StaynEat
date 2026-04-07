@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Clock, RefreshCw, Bell } from "lucide-react";
-import { Order, OrderStatus } from "@/types";
+import { OrderStatus } from "@/types";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatCurrency } from "@/utils/formatCurrency";
 import { formatTimeAgo } from "@/utils/formatDate";
@@ -18,7 +18,15 @@ const COLUMNS: { status: OrderStatus; label: string; color: string }[] = [
   { status: "DELIVERED", label: "Delivered", color: "bg-success-50 dark:bg-green-950 border-green-200 dark:border-green-800" },
 ];
 
-interface ExtendedOrder extends Order {
+interface ExtendedOrder extends Record<string, unknown> {
+  id: string;
+  status: OrderStatus;
+  type: string;
+  createdAt: Date;
+  guestName?: string | null;
+  notes?: string | null;
+  specialInstructions?: string | null;
+  totalAmount: number;
   table?: { tableNumber: string } | null;
   items: Array<{
     id: string;

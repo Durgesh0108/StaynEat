@@ -156,7 +156,7 @@ export function RestaurantMenuPage({ business, initialTable }: RestaurantMenuPag
   });
 
   const categories = useMemo(() => {
-    const cats = [...new Set(business.menuItems.map((i) => i.category))];
+    const cats = Array.from(new Set(business.menuItems.map((i) => i.category)));
     return cats;
   }, [business.menuItems]);
 

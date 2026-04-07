@@ -2,7 +2,6 @@
 
 import { useState } from "react";
 import { Plus, Edit, Trash2, QrCode, Users } from "lucide-react";
-import { Table } from "@/types";
 import { Modal, ConfirmModal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/empty-state";
 import { QRCodeDisplay } from "@/components/ui/qr-code-display";
@@ -20,7 +19,13 @@ const schema = z.object({
 
 type FormData = z.infer<typeof schema>;
 
-interface TableWithQR extends Table {
+interface TableWithQR extends Record<string, unknown> {
+  id: string;
+  tableNumber: string;
+  capacity: number;
+  floor?: number | null;
+  section?: string | null;
+  isActive: boolean;
   qrCode?: { id: string; url: string; scanCount: number } | null;
 }
 

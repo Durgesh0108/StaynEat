@@ -22,7 +22,7 @@ export default async function AdminBusinessDetailPage({ params }: { params: { id
           orders: true,
           reviews: true,
           coupons: true,
-          staff: true,
+          staffMembers: true,
         },
       },
     },
@@ -50,6 +50,7 @@ export default async function AdminBusinessDetailPage({ params }: { params: { id
     { label: "Orders", value: business._count.orders, icon: ShoppingBag },
     { label: "Reviews", value: business._count.reviews, icon: Star },
     { label: "Coupons", value: business._count.coupons, icon: Tag },
+    { label: "Staff", value: business._count.staffMembers, icon: Users },
   ];
 
   return (

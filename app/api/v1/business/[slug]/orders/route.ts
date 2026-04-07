@@ -14,7 +14,7 @@ const orderSchema = z.object({
   items: z.array(z.object({ menuItemId: z.string(), quantity: z.number().min(1) })).min(1),
   guestName: z.string().optional(),
   guestPhone: z.string().optional(),
-  type: z.enum(["DINE_IN", "TAKEAWAY", "DELIVERY"]).default("DINE_IN"),
+  type: z.enum(["DINE_IN", "TAKEAWAY", "ROOM_SERVICE"]).default("DINE_IN"),
   notes: z.string().optional(),
   couponId: z.string().optional(),
 });
@@ -45,7 +45,7 @@ export async function GET(req: NextRequest, { params }: { params: { slug: string
         where,
         include: {
           items: { include: { menuItem: { select: { name: true } } } },
-          table: { select: { number: true } },
+          table: { select: { tableNumber: true } },
         },
         orderBy: { createdAt: "desc" },
         skip: (page - 1) * limit,

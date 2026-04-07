@@ -76,7 +76,6 @@ export async function POST(req: NextRequest) {
         checkOut: new Date(data.checkOut),
         nights,
         totalAmount: data.totalAmount,
-        taxAmount: data.taxAmount,
         discountAmount: data.discountAmount,
         couponCode: data.couponCode,
         finalAmount: data.finalAmount,

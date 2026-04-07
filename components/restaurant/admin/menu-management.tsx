@@ -32,7 +32,7 @@ const schema = z.object({
   isVeg: z.boolean(),
   isAvailable: z.boolean(),
   isFeatured: z.boolean(),
-  preparationTime: z.number().min(1).default(15),
+  preparationTime: z.number().min(1).optional(),
   spiceLevel: z.enum(["MILD", "MEDIUM", "HOT", "EXTRA_HOT"]).optional(),
 });
 
@@ -58,7 +58,7 @@ export function MenuManagement({ businessId, initialItems }: MenuManagementProps
   });
 
   const filteredItems = activeCategory === "all" ? items : items.filter((i) => i.category === activeCategory);
-  const categories = [...new Set(items.map((i) => i.category))];
+  const categories = Array.from(new Set(items.map((i) => i.category)));
 
   const openAdd = () => {
     setEditingItem(null);

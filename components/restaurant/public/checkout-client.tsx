@@ -42,7 +42,7 @@ export function CheckoutClient({ business }: { business: Business }) {
   const [couponInput, setCouponInput] = useState(couponCode ?? "");
   const [validatingCoupon, setValidatingCoupon] = useState(false);
   const [orderId, setOrderId] = useState<string | null>(null);
-  const [razorpayOrder, setRazorpayOrder] = useState<{ id: string; amount: number } | null>(null);
+  const [razorpayOrder, setRazorpayOrder] = useState<{ id: string; amount: number; currency: string } | null>(null);
   const [loading, setLoading] = useState(false);
 
   const { register, handleSubmit, watch, formState: { errors } } = useForm<FormData>({
@@ -110,7 +110,7 @@ export function CheckoutClient({ business }: { business: Business }) {
 
       if (data.paymentMethod === "ONLINE" && json.razorpayOrderId) {
         setOrderId(json.id);
-        setRazorpayOrder({ id: json.razorpayOrderId, amount: json.totalAmount });
+        setRazorpayOrder({ id: json.razorpayOrderId, amount: json.totalAmount, currency: "INR" });
       } else {
         clearCart();
         router.push(`/r/${business.slug}/order/${json.id}`);
@@ -155,11 +155,10 @@ export function CheckoutClient({ business }: { business: Business }) {
     <div className="min-h-screen bg-gray-50 dark:bg-gray-950">
       {razorpayOrder && (
         <RazorpayCheckout
-          orderId={razorpayOrder.id}
-          amount={razorpayOrder.amount}
-          businessName={business.name}
+          order={razorpayOrder}
+          name={business.name}
           onSuccess={handlePaymentSuccess}
-          onDismiss={() => setRazorpayOrder(null)}
+          onError={() => setRazorpayOrder(null)}
         />
       )}
 

@@ -21,8 +21,8 @@ export default async function HotelOrdersPage() {
         status: { notIn: ["DELIVERED", "CANCELLED"] },
       },
       include: {
-        items: { include: { menuItem: { select: { name: true } } } },
-        table: { select: { number: true } },
+        items: { include: { menuItem: { select: { name: true, isVeg: true } } } },
+        table: { select: { tableNumber: true } },
       },
       orderBy: { createdAt: "desc" },
     });

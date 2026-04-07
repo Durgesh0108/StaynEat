@@ -1,19 +1,8 @@
 "use client";
 
-import dynamic from "next/dynamic";
 import { Download, MessageCircle } from "lucide-react";
 import { formatDate } from "@/utils/formatDate";
 import { formatCurrency } from "@/utils/formatCurrency";
-
-const PDFDownloadLink = dynamic(
-  () => import("@react-pdf/renderer").then((m) => m.PDFDownloadLink),
-  { ssr: false, loading: () => <span>Loading...</span> }
-);
-const Document = dynamic(() => import("@react-pdf/renderer").then((m) => m.Document), { ssr: false });
-const Page = dynamic(() => import("@react-pdf/renderer").then((m) => m.Page), { ssr: false });
-const View = dynamic(() => import("@react-pdf/renderer").then((m) => m.View), { ssr: false });
-const Text = dynamic(() => import("@react-pdf/renderer").then((m) => m.Text), { ssr: false });
-const StyleSheet = dynamic(() => import("@react-pdf/renderer").then((m) => m.StyleSheet), { ssr: false });
 
 interface BookingReceiptProps {
   booking: {

@@ -78,7 +78,7 @@ export function BookingFlow({ business, room, checkInStr, checkOutStr }: Booking
     id: string;
     razorpayOrderId?: string;
   } | null>(null);
-  const [confirmedBooking, setConfirmedBooking] = useState<unknown>(null);
+  const [confirmedBooking, setConfirmedBooking] = useState<Record<string, unknown> | null>(null);
   const [razorpayOrder, setRazorpayOrder] = useState<{ id: string; amount: number; currency: string } | null>(null);
 
   const nights = differenceInDays(new Date(checkOut), new Date(checkIn)) || 1;

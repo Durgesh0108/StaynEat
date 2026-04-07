@@ -61,10 +61,10 @@ export function DataTable<T extends Record<string, unknown>>({
   // Sort
   const sorted = sortKey
     ? [...filtered].sort((a, b) => {
-        const aVal = a[sortKey];
-        const bVal = b[sortKey];
-        if (aVal < bVal) return sortDir === "asc" ? -1 : 1;
-        if (aVal > bVal) return sortDir === "asc" ? 1 : -1;
+        const aVal = a[sortKey] as string | number | null | undefined;
+        const bVal = b[sortKey] as string | number | null | undefined;
+        if ((aVal ?? "") < (bVal ?? "")) return sortDir === "asc" ? -1 : 1;
+        if ((aVal ?? "") > (bVal ?? "")) return sortDir === "asc" ? 1 : -1;
         return 0;
       })
     : filtered;

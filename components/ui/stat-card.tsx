@@ -2,22 +2,24 @@
 
 import { cn } from "@/utils/cn";
 import {
-  TrendingUp, TrendingDown, Minus,
+  TrendingUp, TrendingDown, Minus, LucideIcon,
   BedDouble, ShoppingBag, Users, CalendarCheck,
   DollarSign, Clock, Utensils, BarChart3,
   Tag, Wallet, Star, CreditCard, Home,
+  Building, CheckCircle, AlertCircle, CalendarRange,
 } from "lucide-react";
 
-const ICON_MAP = {
+const ICON_MAP: Record<string, LucideIcon> = {
   BedDouble, ShoppingBag, Users, CalendarCheck,
   DollarSign, Clock, Utensils, BarChart3,
   TrendingUp, Tag, Wallet, Star, CreditCard, Home,
+  Building, CheckCircle, AlertCircle, CalendarRange,
 };
 
-export type StatIconName = keyof typeof ICON_MAP;
-
 interface StatCardProps {
-  icon: StatIconName;
+  // Accept either a LucideIcon component (from client components)
+  // or a string name (from server components — can't pass functions across boundary)
+  icon: LucideIcon | string;
   label: string;
   value: string | number;
   trend?: number;
@@ -54,7 +56,9 @@ export function StatCard({
     );
   }
 
-  const Icon = ICON_MAP[icon] ?? Home;
+  const Icon: LucideIcon =
+    typeof icon === "string" ? (ICON_MAP[icon] ?? Home) : icon;
+
   const TrendIcon = trend === undefined ? Minus : trend > 0 ? TrendingUp : trend < 0 ? TrendingDown : Minus;
   const trendColor =
     trend === undefined

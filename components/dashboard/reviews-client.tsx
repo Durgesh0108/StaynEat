@@ -147,7 +147,7 @@ export function ReviewsClient({ reviews: initial, businessId }: { reviews: Revie
                     <div className="flex items-center gap-2">
                       <p className="text-sm font-medium text-gray-900 dark:text-white">{review.guestName}</p>
                       {review.isApproved && (
-                        <CheckCircle className="h-3.5 w-3.5 text-success-500" title="Approved" />
+                        <CheckCircle className="h-3.5 w-3.5 text-success-500" />
                       )}
                     </div>
                     <div className="flex items-center gap-2">

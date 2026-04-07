@@ -2,13 +2,21 @@
 
 import { useState, useEffect, useCallback } from "react";
 import { Clock, ChefHat, CheckCircle } from "lucide-react";
-import { Order, OrderStatus } from "@/types";
+import { OrderStatus } from "@/types";
 import { differenceInMinutes } from "date-fns";
 import { formatCurrency } from "@/utils/formatCurrency";
 import { cn } from "@/utils/cn";
 import toast from "react-hot-toast";
 
-interface ExtendedOrder extends Order {
+interface ExtendedOrder extends Record<string, unknown> {
+  id: string;
+  status: string;
+  type: string;
+  createdAt: Date;
+  guestName?: string | null;
+  notes?: string | null;
+  specialInstructions?: string | null;
+  totalAmount: number;
   table?: { tableNumber: string } | null;
   items: Array<{
     id: string;
@@ -171,9 +179,9 @@ export function KitchenDisplay({ businessId, businessName, initialOrders }: Kitc
                 </div>
 
                 {/* Special Instructions */}
-                {order.specialInstructions && (
+                {order.notes && (
                   <div className="bg-black/30 rounded-xl p-2 mb-4 text-xs text-amber-300">
-                    📝 {order.specialInstructions}
+                    📝 {order.notes}
                   </div>
                 )}
 

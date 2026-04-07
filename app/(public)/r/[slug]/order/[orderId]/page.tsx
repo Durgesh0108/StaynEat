@@ -107,7 +107,7 @@ export default async function OrderStatusPage({ params }: Props) {
                 <span className="text-gray-600 dark:text-gray-300">
                   {item.quantity}× {item.menuItem.name}
                 </span>
-                <span className="text-gray-900 dark:text-white font-medium">₹{item.subtotal.toLocaleString()}</span>
+                <span className="text-gray-900 dark:text-white font-medium">₹{item.totalPrice.toLocaleString()}</span>
               </div>
             ))}
           </div>

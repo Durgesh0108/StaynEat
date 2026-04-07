@@ -5,7 +5,7 @@ import { DataTable, Column } from "@/components/ui/data-table";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatDate } from "@/utils/formatDate";
 import { formatCurrency } from "@/utils/formatCurrency";
-import { Booking, BookingStatus } from "@/types";
+import { BookingStatus } from "@/types";
 import { Modal } from "@/components/ui/modal";
 import toast from "react-hot-toast";
 import {
@@ -17,7 +17,25 @@ import {
   ChevronDown,
 } from "lucide-react";
 
-interface ExtendedBooking extends Booking {
+interface ExtendedBooking extends Record<string, unknown> {
+  id: string;
+  guestName: string;
+  guestPhone: string;
+  guestEmail?: string | null;
+  adults: number;
+  children: number;
+  checkIn: Date;
+  checkOut: Date;
+  nights: number;
+  totalAmount: number;
+  finalAmount: number;
+  discountAmount: number;
+  couponCode?: string | null;
+  paymentStatus: string;
+  paymentMethod?: string | null;
+  status: string;
+  specialRequests?: string | null;
+  notes?: string | null;
   room?: { name: string; roomNumber: string } | null;
 }
 
