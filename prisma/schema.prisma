@@ -419,6 +419,7 @@ model Order {
   roomId       String?     @db.ObjectId
   bookingId    String?     @db.ObjectId
   booking      Booking?    @relation(fields: [bookingId], references: [id])
+  sessionId    String?     // groups multiple orders in one sitting/stay for combined billing
 
   // Guest info
   guestName    String?

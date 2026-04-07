@@ -106,7 +106,8 @@ export function HotelRoomMenuPage({ business, initialRoom }: HotelRoomMenuPagePr
   const [search, setSearch] = useState("");
   const [cartOpen, setCartOpen] = useState(false);
 
-  const { items, addItem, removeItem, updateQuantity, getSubtotal, getTaxAmount, getTotal, getItemCount, setBusiness, setRoom } = useCartStore();
+  const { items, addItem, removeItem, updateQuantity, getSubtotal, getTaxAmount, getTotal, getItemCount, setBusiness, setRoom, sessionId, initSession, clearItems } = useCartStore();
+  const [placingOrder, setPlacingOrder] = useState(false);
 
   useState(() => {
     setBusiness(business.id, business.slug);
@@ -133,6 +134,48 @@ export function HotelRoomMenuPage({ business, initialRoom }: HotelRoomMenuPagePr
   }, [filteredItems]);
 
   const getItemQuantity = (itemId: string) => items.find((i) => i.menuItem.id === itemId)?.quantity ?? 0;
+
+  const getOrder = async () => {
+    if (items.length === 0) return;
+    const sid = sessionId ?? initSession();
+    setPlacingOrder(true);
+    try {
+      const taxRate = business.settings?.taxPercentage ?? 18;
+      const subtotal = getSubtotal();
+      const taxAmount = Math.round((subtotal * taxRate) / 100);
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          businessId: business.id,
+          roomId: initialRoom?.id ?? undefined,
+          sessionId: sid,
+          type: "ROOM_SERVICE",
+          paymentMethod: "OFFLINE",
+          guestName: "Room Guest",
+          guestPhone: "0000000000",
+          items: items.map((i) => ({
+            menuItemId: i.menuItem.id,
+            quantity: i.quantity,
+            unitPrice: i.menuItem.price,
+            totalPrice: i.menuItem.price * i.quantity,
+          })),
+          subtotal,
+          taxAmount,
+          discountAmount: 0,
+          totalAmount: subtotal + taxAmount,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      clearItems();
+      setCartOpen(false);
+      toast.success("Order placed! We'll deliver to your room shortly.", { duration: 3000 });
+    } catch {
+      toast.error("Failed to place order. Try again.");
+    } finally {
+      setPlacingOrder(false);
+    }
+  };
 
   const taxPercentage = business.settings?.taxPercentage ?? 18;
   const cartCount = getItemCount();
@@ -235,15 +278,25 @@ export function HotelRoomMenuPage({ business, initialRoom }: HotelRoomMenuPagePr
         )}
       </div>
 
-      {/* Bottom Cart Button */}
-      {cartCount > 0 && (
+      {/* Bottom Bar */}
+      {(cartCount > 0 || sessionId) && (
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 shadow-lg z-20">
-          <div className="max-w-2xl mx-auto">
-            <button onClick={() => setCartOpen(true)} className="w-full btn-primary flex items-center justify-between py-3.5 px-5">
-              <span className="bg-white/20 rounded-lg px-2 py-0.5 text-sm font-bold">{cartCount}</span>
-              <span className="font-semibold">View Order</span>
-              <span className="font-bold">{formatCurrency(total)}</span>
-            </button>
+          <div className="max-w-2xl mx-auto space-y-2">
+            {cartCount > 0 && (
+              <button onClick={() => setCartOpen(true)} className="w-full btn-primary flex items-center justify-between py-3.5 px-5">
+                <span className="bg-white/20 rounded-lg px-2 py-0.5 text-sm font-bold">{cartCount}</span>
+                <span className="font-semibold">View Order</span>
+                <span className="font-bold">{formatCurrency(total)}</span>
+              </button>
+            )}
+            {sessionId && (
+              <button
+                onClick={() => router.push(`/h/${business.slug}/bill?session=${sessionId}`)}
+                className="w-full btn-secondary flex items-center justify-center gap-2 py-2.5 text-sm"
+              >
+                Request Final Bill<ChevronRight className="h-4 w-4" />
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -290,10 +343,19 @@ export function HotelRoomMenuPage({ business, initialRoom }: HotelRoomMenuPagePr
                     <span>Total</span><span className="text-primary-600 dark:text-primary-400">{formatCurrency(total)}</span>
                   </div>
                 </div>
-                <button onClick={() => { setCartOpen(false); router.push(`/h/${business.slug}/checkout${initialRoom ? `?room=${initialRoom.roomNumber}` : ""}`); }}
-                  className="w-full btn-primary flex items-center justify-center gap-2 py-3">
-                  Proceed to Checkout<ChevronRight className="h-4 w-4" />
-                </button>
+                <div className="space-y-2">
+                  <button onClick={getOrder} disabled={placingOrder} className="w-full btn-primary flex items-center justify-center gap-2 py-3">
+                    {placingOrder ? "Placing..." : "Get Order"}
+                  </button>
+                  {sessionId && (
+                    <button
+                      onClick={() => { setCartOpen(false); router.push(`/h/${business.slug}/bill?session=${sessionId}`); }}
+                      className="w-full btn-secondary flex items-center justify-center gap-2 py-2.5 text-sm"
+                    >
+                      Request Final Bill<ChevronRight className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
               </div>
             </motion.div>
           </div>

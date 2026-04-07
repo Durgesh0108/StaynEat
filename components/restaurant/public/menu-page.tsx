@@ -147,7 +147,8 @@ export function RestaurantMenuPage({ business, initialTable }: RestaurantMenuPag
   const [search, setSearch] = useState("");
   const [cartOpen, setCartOpen] = useState(false);
 
-  const { items, addItem, removeItem, updateQuantity, getSubtotal, getTaxAmount, getTotal, getItemCount, setBusiness, setTable } = useCartStore();
+  const { items, addItem, removeItem, updateQuantity, getSubtotal, getTaxAmount, getTotal, getItemCount, setBusiness, setTable, sessionId, initSession, clearItems } = useCartStore();
+  const [placingOrder, setPlacingOrder] = useState(false);
 
   // Init cart with business
   useState(() => {
@@ -182,6 +183,48 @@ export function RestaurantMenuPage({ business, initialTable }: RestaurantMenuPag
 
   const getItemQuantity = (itemId: string) => {
     return items.find((i) => i.menuItem.id === itemId)?.quantity ?? 0;
+  };
+
+  const getOrder = async () => {
+    if (items.length === 0) return;
+    const sid = sessionId ?? initSession();
+    setPlacingOrder(true);
+    try {
+      const taxRate = business.settings?.taxPercentage ?? 18;
+      const subtotal = getSubtotal();
+      const taxAmount = Math.round((subtotal * taxRate) / 100);
+      const res = await fetch("/api/orders", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          businessId: business.id,
+          tableId: useCartStore.getState().tableId ?? undefined,
+          sessionId: sid,
+          type: "DINE_IN",
+          paymentMethod: "OFFLINE",
+          guestName: "Table Guest",
+          guestPhone: "0000000000",
+          items: items.map((i) => ({
+            menuItemId: i.menuItem.id,
+            quantity: i.quantity,
+            unitPrice: i.menuItem.price,
+            totalPrice: i.menuItem.price * i.quantity,
+          })),
+          subtotal,
+          taxAmount,
+          discountAmount: 0,
+          totalAmount: subtotal + taxAmount,
+        }),
+      });
+      if (!res.ok) throw new Error("Failed");
+      clearItems();
+      setCartOpen(false);
+      toast.success("Order placed! Kitchen is preparing your food.", { duration: 3000 });
+    } catch {
+      toast.error("Failed to place order. Try again.");
+    } finally {
+      setPlacingOrder(false);
+    }
   };
 
   const taxPercentage = business.settings?.taxPercentage ?? 18;
@@ -330,18 +373,26 @@ export function RestaurantMenuPage({ business, initialTable }: RestaurantMenuPag
         )}
       </div>
 
-      {/* Bottom Cart Button */}
-      {cartCount > 0 && (
+      {/* Bottom Bar */}
+      {(cartCount > 0 || sessionId) && (
         <div className="fixed bottom-0 left-0 right-0 p-4 bg-white dark:bg-gray-900 border-t border-gray-100 dark:border-gray-800 shadow-lg z-20">
-          <div className="max-w-2xl mx-auto">
-            <button
-              onClick={() => setCartOpen(true)}
-              className="w-full btn-primary flex items-center justify-between py-3.5 px-5"
-            >
-              <span className="bg-white/20 rounded-lg px-2 py-0.5 text-sm font-bold">{cartCount}</span>
-              <span className="font-semibold">View Cart</span>
-              <span className="font-bold">{formatCurrency(total)}</span>
-            </button>
+          <div className="max-w-2xl mx-auto space-y-2">
+            {cartCount > 0 && (
+              <button onClick={() => setCartOpen(true)} className="w-full btn-primary flex items-center justify-between py-3.5 px-5">
+                <span className="bg-white/20 rounded-lg px-2 py-0.5 text-sm font-bold">{cartCount}</span>
+                <span className="font-semibold">View Cart</span>
+                <span className="font-bold">{formatCurrency(total)}</span>
+              </button>
+            )}
+            {sessionId && (
+              <button
+                onClick={() => router.push(`/r/${business.slug}/bill?session=${sessionId}`)}
+                className="w-full btn-secondary flex items-center justify-center gap-2 py-2.5 text-sm"
+              >
+                Request Bill
+                <ChevronRight className="h-4 w-4" />
+              </button>
+            )}
           </div>
         </div>
       )}
@@ -404,16 +455,27 @@ export function RestaurantMenuPage({ business, initialTable }: RestaurantMenuPag
                     <span className="text-primary-600 dark:text-primary-400">{formatCurrency(total)}</span>
                   </div>
                 </div>
-                <button
-                  onClick={() => {
-                    setCartOpen(false);
-                    router.push(`/r/${business.slug}/checkout${initialTable ? `?table=${initialTable.tableNumber}` : ""}`);
-                  }}
-                  className="w-full btn-primary flex items-center justify-center gap-2 py-3"
-                >
-                  Proceed to Checkout
-                  <ChevronRight className="h-4 w-4" />
-                </button>
+                <div className="space-y-2">
+                  <button
+                    onClick={getOrder}
+                    disabled={placingOrder}
+                    className="w-full btn-primary flex items-center justify-center gap-2 py-3"
+                  >
+                    {placingOrder ? "Placing..." : "Get Order"}
+                  </button>
+                  {sessionId && (
+                    <button
+                      onClick={() => {
+                        setCartOpen(false);
+                        router.push(`/r/${business.slug}/bill?session=${sessionId}`);
+                      }}
+                      className="w-full btn-secondary flex items-center justify-center gap-2 py-2.5 text-sm"
+                    >
+                      Proceed to Checkout (Get Bill)
+                      <ChevronRight className="h-4 w-4" />
+                    </button>
+                  )}
+                </div>
               </div>
             </motion.div>
           </div>

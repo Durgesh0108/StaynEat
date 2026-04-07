@@ -9,6 +9,7 @@ interface CartStore {
   tableNumber: string | null;
   roomId: string | null;
   roomNumber: string | null;
+  sessionId: string | null;
   items: CartItem[];
   couponCode: string | null;
   discount: number;
@@ -17,10 +18,12 @@ interface CartStore {
   setTable: (tableId: string, tableNumber: string) => void;
   setRoom: (roomId: string, roomNumber: string) => void;
   setBusiness: (businessId: string, slug: string) => void;
+  initSession: () => string;
   addItem: (menuItem: MenuItem, quantity?: number) => void;
   removeItem: (menuItemId: string) => void;
   updateQuantity: (menuItemId: string, quantity: number) => void;
-  clearCart: () => void;
+  clearItems: () => void;   // clears items only, keeps session (used after "Get Order")
+  clearCart: () => void;    // clears everything including session (used after final checkout)
   applyCoupon: (code: string, discount: number) => void;
   removeCoupon: () => void;
 
@@ -40,15 +43,39 @@ export const useCartStore = create<CartStore>()(
       tableNumber: null,
       roomId: null,
       roomNumber: null,
+      sessionId: null,
       items: [],
       couponCode: null,
       discount: 0,
 
-      setTable: (tableId, tableNumber) => set({ tableId, tableNumber, roomId: null, roomNumber: null }),
+      setTable: (tableId, tableNumber) => {
+        const state = get();
+        // new table = new session
+        if (state.tableId !== tableId) {
+          set({ tableId, tableNumber, roomId: null, roomNumber: null, sessionId: crypto.randomUUID() });
+        } else {
+          set({ tableId, tableNumber, roomId: null, roomNumber: null });
+        }
+      },
 
-      setRoom: (roomId, roomNumber) => set({ roomId, roomNumber, tableId: null, tableNumber: null }),
+      setRoom: (roomId, roomNumber) => {
+        const state = get();
+        if (state.roomId !== roomId) {
+          set({ roomId, roomNumber, tableId: null, tableNumber: null, sessionId: crypto.randomUUID() });
+        } else {
+          set({ roomId, roomNumber, tableId: null, tableNumber: null });
+        }
+      },
 
       setBusiness: (businessId, slug) => set({ businessId, businessSlug: slug }),
+
+      initSession: () => {
+        const existing = get().sessionId;
+        if (existing) return existing;
+        const id = crypto.randomUUID();
+        set({ sessionId: id });
+        return id;
+      },
 
       addItem: (menuItem, quantity = 1) => {
         const { items } = get();
@@ -82,6 +109,8 @@ export const useCartStore = create<CartStore>()(
         });
       },
 
+      clearItems: () => set({ items: [], couponCode: null, discount: 0 }),
+
       clearCart: () =>
         set({
           items: [],
@@ -89,6 +118,7 @@ export const useCartStore = create<CartStore>()(
           tableNumber: null,
           roomId: null,
           roomNumber: null,
+          sessionId: null,
           couponCode: null,
           discount: 0,
         }),
@@ -127,6 +157,7 @@ export const useCartStore = create<CartStore>()(
         tableNumber: state.tableNumber,
         roomId: state.roomId,
         roomNumber: state.roomNumber,
+        sessionId: state.sessionId,
         items: state.items,
         couponCode: state.couponCode,
         discount: state.discount,
