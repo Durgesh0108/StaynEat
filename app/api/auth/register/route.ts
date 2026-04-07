@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { z } from "zod";
 import { generateSlug } from "@/utils/generateSlug";
 import { addDays } from "date-fns";
+import { randomBytes } from "crypto";
 
 const schema = z.object({
   name: z.string().min(2),
@@ -38,6 +39,7 @@ export async function POST(req: NextRequest) {
     }
 
     const trialEndsAt = addDays(new Date(), parseInt(process.env.TRIAL_DAYS ?? "14"));
+    const apiKey = randomBytes(32).toString("hex");
 
     // Create user + business atomically
     const user = await prisma.user.create({
@@ -51,6 +53,7 @@ export async function POST(req: NextRequest) {
           create: {
             name: data.businessName,
             slug,
+            apiKey,
             type: data.businessType,
             city: data.city,
             subscriptionStatus: "TRIAL",

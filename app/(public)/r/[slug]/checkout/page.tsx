@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import { prisma } from "@/lib/prisma";
 import { CheckoutClient } from "@/components/restaurant/public/checkout-client";
 
+export const dynamic = "force-dynamic";
+
 interface Props { params: { slug: string } }
 
 export default async function CheckoutPage({ params }: Props) {
