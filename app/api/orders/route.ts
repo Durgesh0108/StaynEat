@@ -139,6 +139,8 @@ export async function GET(req: NextRequest) {
 
   const typeParam = searchParams.get("type");
   const searchParam = searchParams.get("search");
+  const dateFrom = searchParams.get("dateFrom"); // ISO date string YYYY-MM-DD
+  const dateTo = searchParams.get("dateTo");     // ISO date string YYYY-MM-DD
 
   try {
     const where: Record<string, unknown> = { businessId };
@@ -148,8 +150,13 @@ export async function GET(req: NextRequest) {
     }
     if (typeParam) where.type = typeParam;
     if (searchParam) {
-      // Search by guestName — table/room numbers require join filtering (done in-memory)
       where.guestName = { contains: searchParam, mode: "insensitive" };
+    }
+    if (dateFrom || dateTo) {
+      const createdAt: Record<string, Date> = {};
+      if (dateFrom) createdAt.gte = new Date(dateFrom + "T00:00:00.000Z");
+      if (dateTo)   createdAt.lte = new Date(dateTo   + "T23:59:59.999Z");
+      where.createdAt = createdAt;
     }
 
     const [orders, total] = await Promise.all([

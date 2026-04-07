@@ -8,13 +8,14 @@ import { formatCurrency } from "@/utils/formatCurrency";
 import { BookingStatus } from "@/types";
 import { Modal } from "@/components/ui/modal";
 import toast from "react-hot-toast";
+import { format, addDays } from "date-fns";
 import {
   CalendarRange,
-  User,
-  Phone,
   Mail,
   MessageCircle,
   ChevronDown,
+  CalendarPlus,
+  CalendarCheck,
 } from "lucide-react";
 
 interface ExtendedBooking extends Record<string, unknown> {
@@ -53,6 +54,9 @@ export function BookingsManagement({ businessId, initialBookings }: BookingsMana
   const [filter, setFilter] = useState<string>("all");
   const [detailBooking, setDetailBooking] = useState<ExtendedBooking | null>(null);
   const [updatingId, setUpdatingId] = useState<string | null>(null);
+  const [extendModalOpen, setExtendModalOpen] = useState(false);
+  const [newCheckOut, setNewCheckOut] = useState("");
+  const [extendLoading, setExtendLoading] = useState(false);
 
   const filtered = filter === "all" ? bookings : bookings.filter((b) => b.status === filter);
 
@@ -70,6 +74,35 @@ export function BookingsManagement({ businessId, initialBookings }: BookingsMana
       toast.success("Status updated");
     } catch { toast.error("Failed to update status"); }
     finally { setUpdatingId(null); }
+  };
+
+  const updateCheckOut = async (bookingId: string, checkOut: string) => {
+    setExtendLoading(true);
+    try {
+      const res = await fetch(`/api/bookings/${bookingId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ checkOut: new Date(checkOut).toISOString() }),
+      });
+      if (!res.ok) throw new Error("Failed to update dates");
+      const json = await res.json();
+      const updated = { ...detailBooking!, checkOut: new Date(checkOut), nights: json.booking?.nights ?? detailBooking!.nights };
+      setBookings(bookings.map((b) => (b.id === bookingId ? updated : b)));
+      setDetailBooking(updated);
+      setExtendModalOpen(false);
+      toast.success("Check-out date updated");
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Failed to update");
+    } finally {
+      setExtendLoading(false);
+    }
+  };
+
+  const earlyCheckout = async (booking: ExtendedBooking) => {
+    const today = format(new Date(), "yyyy-MM-dd");
+    if (confirm(`Set check-out to today (${today}) for ${booking.guestName}?`)) {
+      await updateCheckOut(booking.id, today);
+    }
   };
 
   const whatsappLink = (booking: ExtendedBooking) => {
@@ -222,6 +255,35 @@ export function BookingsManagement({ businessId, initialBookings }: BookingsMana
         emptyMessage="No bookings found"
       />
 
+      {/* Extend Stay Modal */}
+      <Modal isOpen={extendModalOpen} onClose={() => setExtendModalOpen(false)} title="Extend Stay" size="sm">
+        <div className="p-5 space-y-4">
+          <p className="text-sm text-gray-500">
+            Current check-out: <strong>{detailBooking ? formatDate(detailBooking.checkOut) : "—"}</strong>
+          </p>
+          <div>
+            <label className="label">New Check-out Date</label>
+            <input
+              type="date"
+              value={newCheckOut}
+              min={format(addDays(new Date(detailBooking?.checkOut ?? new Date()), 1), "yyyy-MM-dd")}
+              onChange={(e) => setNewCheckOut(e.target.value)}
+              className="input"
+            />
+          </div>
+          <div className="flex gap-3 pt-2 border-t border-gray-100 dark:border-gray-800">
+            <button onClick={() => setExtendModalOpen(false)} className="btn-secondary flex-1">Cancel</button>
+            <button
+              onClick={() => detailBooking && updateCheckOut(detailBooking.id, newCheckOut)}
+              disabled={!newCheckOut || extendLoading}
+              className="btn-primary flex-1"
+            >
+              {extendLoading ? "Saving..." : "Confirm Extension"}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
       {/* Detail Modal */}
       <Modal
         isOpen={!!detailBooking}
@@ -298,6 +360,32 @@ export function BookingsManagement({ businessId, initialBookings }: BookingsMana
               <div className="card p-4">
                 <p className="text-xs text-gray-400 mb-1">Special Requests</p>
                 <p className="text-sm text-gray-700 dark:text-gray-300">{detailBooking.specialRequests}</p>
+              </div>
+            )}
+
+            {/* Stay adjustments */}
+            {(detailBooking.status === "CONFIRMED" || detailBooking.status === "CHECKED_IN") && (
+              <div className="card p-4 space-y-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Adjust Stay</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => {
+                      setNewCheckOut(format(addDays(new Date(detailBooking.checkOut), 1), "yyyy-MM-dd"));
+                      setExtendModalOpen(true);
+                    }}
+                    className="flex-1 flex items-center justify-center gap-1.5 text-xs py-2 bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border border-blue-200 dark:border-blue-800 rounded-xl hover:bg-blue-100 transition-colors font-medium"
+                  >
+                    <CalendarPlus className="h-3.5 w-3.5" />
+                    Extend Stay
+                  </button>
+                  <button
+                    onClick={() => earlyCheckout(detailBooking)}
+                    className="flex-1 flex items-center justify-center gap-1.5 text-xs py-2 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 rounded-xl hover:bg-amber-100 transition-colors font-medium"
+                  >
+                    <CalendarCheck className="h-3.5 w-3.5" />
+                    Early Check-out
+                  </button>
+                </div>
               </div>
             )}
 

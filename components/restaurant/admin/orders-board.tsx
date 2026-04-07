@@ -1,7 +1,8 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { Clock, RefreshCw, Bell, Search, ChevronLeft, ChevronRight, Filter } from "lucide-react";
+import { useState, useEffect, useCallback, useMemo } from "react";
+import { Clock, RefreshCw, Bell, Search, ChevronLeft, ChevronRight, Calendar, X } from "lucide-react";
+import { format, startOfMonth, endOfMonth, startOfYear, endOfYear, subDays } from "date-fns";
 import { OrderStatus } from "@/types";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatCurrency } from "@/utils/formatCurrency";
@@ -139,11 +140,25 @@ export function OrdersBoard({ businessId, initialOrders }: OrdersBoardProps) {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [typeFilter, setTypeFilter] = useState<string>("all");
   const [search, setSearch] = useState("");
+  const [dateFrom, setDateFrom] = useState("");
+  const [dateTo, setDateTo] = useState("");
+  const [datePreset, setDatePreset] = useState<string>("all"); // today | week | month | year | custom
 
   // Pagination (list view)
   const [page, setPage] = useState(1);
   const [total, setTotal] = useState(initialOrders.length);
   const [listLoading, setListLoading] = useState(false);
+
+  // Resolve date range from preset
+  const resolvedDates = useMemo(() => {
+    const now = new Date();
+    if (datePreset === "today") return { from: format(now, "yyyy-MM-dd"), to: format(now, "yyyy-MM-dd") };
+    if (datePreset === "week")  return { from: format(subDays(now, 6), "yyyy-MM-dd"), to: format(now, "yyyy-MM-dd") };
+    if (datePreset === "month") return { from: format(startOfMonth(now), "yyyy-MM-dd"), to: format(endOfMonth(now), "yyyy-MM-dd") };
+    if (datePreset === "year")  return { from: format(startOfYear(now), "yyyy-MM-dd"), to: format(endOfYear(now), "yyyy-MM-dd") };
+    if (datePreset === "custom") return { from: dateFrom, to: dateTo };
+    return { from: "", to: "" };
+  }, [datePreset, dateFrom, dateTo]);
 
   const buildQuery = useCallback((overridePage?: number) => {
     const params = new URLSearchParams({ businessId, limit: String(PAGE_SIZE) });
@@ -151,8 +166,10 @@ export function OrdersBoard({ businessId, initialOrders }: OrdersBoardProps) {
     if (statusFilter !== "all") params.set("status", statusFilter);
     if (typeFilter !== "all") params.set("type", typeFilter);
     if (search) params.set("search", search);
+    if (resolvedDates.from) params.set("dateFrom", resolvedDates.from);
+    if (resolvedDates.to)   params.set("dateTo", resolvedDates.to);
     return params.toString();
-  }, [businessId, page, statusFilter, typeFilter, search]);
+  }, [businessId, page, statusFilter, typeFilter, search, resolvedDates]);
 
   const fetchOrders = useCallback(async (isBackground = false) => {
     try {
@@ -179,7 +196,7 @@ export function OrdersBoard({ businessId, initialOrders }: OrdersBoardProps) {
   useEffect(() => {
     fetchOrders(false);
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [statusFilter, typeFilter, page]);
+  }, [statusFilter, typeFilter, page, resolvedDates]);
 
   // Search with debounce
   useEffect(() => {
@@ -225,7 +242,7 @@ export function OrdersBoard({ businessId, initialOrders }: OrdersBoardProps) {
 
   return (
     <>
-      {/* Controls */}
+      {/* Controls — row 1 */}
       <div className="flex flex-wrap items-center gap-3">
         {/* View toggle */}
         <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
@@ -242,11 +259,9 @@ export function OrdersBoard({ businessId, initialOrders }: OrdersBoardProps) {
           ))}
         </div>
 
-        {/* Pending badge */}
         {pendingCount > 0 && (
           <div className="flex items-center gap-1 bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-400 text-xs px-2.5 py-1.5 rounded-lg">
-            <Bell className="h-3 w-3" />
-            {pendingCount} pending
+            <Bell className="h-3 w-3" />{pendingCount} pending
           </div>
         )}
 
@@ -289,9 +304,65 @@ export function OrdersBoard({ businessId, initialOrders }: OrdersBoardProps) {
         </select>
 
         <button onClick={() => fetchOrders(false)} className="btn-secondary text-xs flex items-center gap-1.5 py-1.5">
-          <RefreshCw className="h-3 w-3" />
-          Refresh
+          <RefreshCw className="h-3 w-3" />Refresh
         </button>
+      </div>
+
+      {/* Controls — row 2: Date filters */}
+      <div className="flex flex-wrap items-center gap-2">
+        <Calendar className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+        {[
+          { key: "all",    label: "All time" },
+          { key: "today",  label: "Today" },
+          { key: "week",   label: "This week" },
+          { key: "month",  label: "This month" },
+          { key: "year",   label: "This year" },
+          { key: "custom", label: "Custom range" },
+        ].map(({ key, label }) => (
+          <button
+            key={key}
+            onClick={() => { setDatePreset(key); setPage(1); }}
+            className={cn(
+              "text-xs px-3 py-1.5 rounded-lg border transition-all font-medium",
+              datePreset === key
+                ? "bg-primary-500 text-white border-primary-500"
+                : "bg-white dark:bg-gray-800 border-gray-200 dark:border-gray-700 text-gray-600 dark:text-gray-400 hover:border-gray-300"
+            )}
+          >
+            {label}
+          </button>
+        ))}
+
+        {datePreset === "custom" && (
+          <div className="flex items-center gap-2 ml-1">
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => { setDateFrom(e.target.value); setPage(1); }}
+              className="input py-1.5 text-xs w-36"
+            />
+            <span className="text-xs text-gray-400">to</span>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => { setDateTo(e.target.value); setPage(1); }}
+              className="input py-1.5 text-xs w-36"
+            />
+            {(dateFrom || dateTo) && (
+              <button onClick={() => { setDateFrom(""); setDateTo(""); }} className="p-1 text-gray-400 hover:text-gray-600">
+                <X className="h-3.5 w-3.5" />
+              </button>
+            )}
+          </div>
+        )}
+
+        {datePreset !== "all" && resolvedDates.from && resolvedDates.to && (
+          <span className="text-xs text-gray-400 ml-1">
+            {resolvedDates.from === resolvedDates.to
+              ? resolvedDates.from
+              : `${resolvedDates.from} → ${resolvedDates.to}`}
+          </span>
+        )}
       </div>
 
       {view === "kanban" ? (

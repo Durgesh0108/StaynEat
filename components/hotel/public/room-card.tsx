@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   BedDouble,
   Users,
@@ -14,6 +14,9 @@ import {
   Coffee,
   Bath,
   Phone,
+  CheckCircle,
+  XCircle,
+  Loader2,
 } from "lucide-react";
 import { Room } from "@/types";
 import { formatCurrency } from "@/utils/formatCurrency";
@@ -47,6 +50,10 @@ interface RoomCardProps {
 
 export function RoomCard({ room, businessSlug, checkIn, checkOut, taxPercentage = 18 }: RoomCardProps) {
   const [imageIndex, setImageIndex] = useState(0);
+  const [availability, setAvailability] = useState<{ available: boolean | null; loading: boolean }>({
+    available: room.isAvailable ? null : false,
+    loading: false,
+  });
 
   const images = room.images.length > 0
     ? room.images
@@ -56,6 +63,21 @@ export function RoomCard({ room, businessSlug, checkIn, checkOut, taxPercentage 
   const basePrice = room.pricePerNight * nights;
   const tax = (basePrice * taxPercentage) / 100;
   const total = basePrice + tax;
+
+  // When dates are selected, check availability from the API
+  useEffect(() => {
+    if (!checkIn || !checkOut || !room.isAvailable) return;
+    setAvailability({ available: null, loading: true });
+    const ci = checkIn.toISOString().slice(0, 10);
+    const co = checkOut.toISOString().slice(0, 10);
+    fetch(`/api/rooms/${room.id}/availability?checkIn=${ci}&checkOut=${co}`)
+      .then((r) => r.json())
+      .then((d) => setAvailability({ available: d.available, loading: false }))
+      .catch(() => setAvailability({ available: null, loading: false }));
+  }, [checkIn, checkOut, room.id, room.isAvailable]);
+
+  const datesSelected = !!(checkIn && checkOut);
+  const isAvailableForDates = !datesSelected ? room.isAvailable : availability.available !== false;
 
   const bookingUrl = checkIn && checkOut
     ? `/h/${businessSlug}/book?roomId=${room.id}&checkIn=${checkIn.toISOString()}&checkOut=${checkOut.toISOString()}`
@@ -102,10 +124,23 @@ export function RoomCard({ room, businessSlug, checkIn, checkOut, taxPercentage 
               </div>
             </>
           )}
+          {/* Availability overlay */}
+          {datesSelected && availability.loading && (
+            <div className="absolute inset-0 bg-black/30 flex items-center justify-center">
+              <Loader2 className="h-6 w-6 text-white animate-spin" />
+            </div>
+          )}
           {!room.isAvailable && (
             <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
               <span className="text-white font-semibold text-sm bg-black/60 px-3 py-1 rounded-full">
-                Not Available
+                Unavailable
+              </span>
+            </div>
+          )}
+          {room.isAvailable && datesSelected && availability.available === false && !availability.loading && (
+            <div className="absolute inset-0 bg-black/50 flex items-center justify-center">
+              <span className="text-white font-semibold text-sm bg-red-600/80 px-3 py-1 rounded-full">
+                Booked for these dates
               </span>
             </div>
           )}
@@ -161,14 +196,35 @@ export function RoomCard({ room, businessSlug, checkIn, checkOut, taxPercentage 
                 </p>
               )}
             </div>
+            {/* Availability indicator when dates are selected */}
+            {datesSelected && !availability.loading && availability.available !== null && (
+              <div className={cn(
+                "flex items-center gap-1 text-xs font-medium",
+                availability.available ? "text-success-600" : "text-danger-600"
+              )}>
+                {availability.available
+                  ? <><CheckCircle className="h-3.5 w-3.5" />Available</>
+                  : <><XCircle className="h-3.5 w-3.5" />Not available</>
+                }
+              </div>
+            )}
+
             <Link
-              href={bookingUrl}
+              href={isAvailableForDates ? bookingUrl : "#"}
               className={cn(
                 "btn-primary text-sm py-2 px-4",
-                !room.isAvailable && "opacity-50 pointer-events-none bg-gray-400"
+                !isAvailableForDates && "opacity-50 pointer-events-none bg-gray-400"
               )}
             >
-              {room.isAvailable ? "Book Now" : "Unavailable"}
+              {availability.loading ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : !room.isAvailable ? (
+                "Unavailable"
+              ) : datesSelected && availability.available === false ? (
+                "Booked"
+              ) : (
+                "Book Now"
+              )}
             </Link>
           </div>
         </div>

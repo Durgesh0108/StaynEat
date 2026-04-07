@@ -109,27 +109,21 @@ interface LiveOrderItem {
 interface LiveOrder {
   id: string;
   status: string;
+  totalAmount: number;
   items: LiveOrderItem[];
 }
+
+const STATUS_META: Record<string, { label: string; pill: string; bar: string }> = {
+  PENDING:   { label: "Waiting for kitchen", pill: "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300",    bar: "bg-amber-400" },
+  CONFIRMED: { label: "Confirmed",           pill: "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300",        bar: "bg-blue-400" },
+  PREPARING: { label: "Being prepared",      pill: "bg-orange-100 dark:bg-orange-900/40 text-orange-700 dark:text-orange-300", bar: "bg-orange-400" },
+  READY:     { label: "On its way",          pill: "bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300",        bar: "bg-teal-400" },
+  DELIVERED: { label: "Delivered",           pill: "bg-success-100 dark:bg-success-900/40 text-success-700 dark:text-success-300", bar: "bg-success-500" },
+};
 
 function OrderTracker({ sessionId, businessId }: { sessionId: string; businessId: string }) {
   const [orders, setOrders] = useState<LiveOrder[]>([]);
   const [expanded, setExpanded] = useState(true);
-
-  const STATUS_LABEL: Record<string, string> = {
-    PENDING: "Waiting",
-    CONFIRMED: "Confirmed",
-    PREPARING: "Preparing",
-    READY: "Ready to serve",
-    DELIVERED: "Delivered",
-  };
-  const STATUS_COLOR: Record<string, string> = {
-    PENDING: "text-amber-500 bg-amber-50 dark:bg-amber-950",
-    CONFIRMED: "text-blue-500 bg-blue-50 dark:bg-blue-950",
-    PREPARING: "text-orange-500 bg-orange-50 dark:bg-orange-950",
-    READY: "text-teal-600 bg-teal-50 dark:bg-teal-950",
-    DELIVERED: "text-success-600 bg-success-50 dark:bg-success-950",
-  };
 
   const fetchOrders = useCallback(async () => {
     try {
@@ -147,39 +141,52 @@ function OrderTracker({ sessionId, businessId }: { sessionId: string; businessId
 
   if (orders.length === 0) return null;
 
+  const activeCount = orders.filter((o) => o.status !== "DELIVERED" && o.status !== "CANCELLED").length;
+  const allDone = activeCount === 0 && orders.length > 0;
+
   return (
-    <div className="max-w-2xl mx-auto px-4 mb-4">
-      <div className="card overflow-hidden">
+    <div className="max-w-2xl mx-auto px-4 mb-3">
+      <div className={cn("rounded-2xl overflow-hidden border shadow-sm", allDone ? "border-success-300 dark:border-success-700" : "border-blue-200 dark:border-blue-800")}>
         <button
           onClick={() => setExpanded((e) => !e)}
-          className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-gray-900 dark:text-white bg-gray-50 dark:bg-gray-800/50"
+          className={cn("w-full flex items-center justify-between px-4 py-3", allDone ? "bg-success-50 dark:bg-success-900/20" : "bg-blue-50 dark:bg-blue-900/20")}
         >
-          <div className="flex items-center gap-2">
-            <ChefHat className="h-4 w-4 text-primary-500" />
-            Your Orders ({orders.length})
+          <div className="flex items-center gap-2.5">
+            <ChefHat className={cn("h-4 w-4", allDone ? "text-success-500" : "text-blue-500")} />
+            <span className="font-semibold text-sm text-gray-900 dark:text-white">
+              {allDone ? "All orders delivered!" : `${activeCount} room service order${activeCount !== 1 ? "s" : ""} active`}
+            </span>
+            {allDone && <CheckCircle2 className="h-4 w-4 text-success-500" />}
           </div>
           {expanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
         </button>
         {expanded && (
-          <div className="divide-y divide-gray-50 dark:divide-gray-800">
-            {orders.map((order) => (
-              <div key={order.id} className="px-4 py-3">
-                <div className="flex items-center justify-between mb-1.5">
-                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_COLOR[order.status] ?? "bg-gray-100 text-gray-500"}`}>
-                    {STATUS_LABEL[order.status] ?? order.status}
-                  </span>
-                  {order.status === "DELIVERED" && <CheckCircle2 className="h-4 w-4 text-success-500" />}
-                </div>
-                <div className="space-y-0.5">
-                  {order.items.map((item) => (
-                    <div key={item.id} className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
-                      <span>{item.quantity}× {item.menuItem.name}</span>
-                      <span className="font-medium">{formatCurrency(item.totalPrice)}</span>
+          <div className="bg-white dark:bg-gray-900 divide-y divide-gray-50 dark:divide-gray-800">
+            {orders.map((order, idx) => {
+              const meta = STATUS_META[order.status] ?? STATUS_META.PENDING;
+              return (
+                <div key={order.id} className="flex">
+                  <div className={cn("w-1 flex-shrink-0", meta.bar)} />
+                  <div className="flex-1 px-4 py-3">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-medium text-gray-400">Order {idx + 1}</span>
+                      <span className={cn("text-xs font-semibold px-2.5 py-0.5 rounded-full", meta.pill)}>{meta.label}</span>
                     </div>
-                  ))}
+                    <div className="space-y-0.5">
+                      {order.items.map((item) => (
+                        <div key={item.id} className="flex justify-between text-xs">
+                          <span className="text-gray-600 dark:text-gray-400">{item.quantity}× {item.menuItem.name}</span>
+                          <span className="font-medium text-gray-800 dark:text-gray-200">{formatCurrency(item.totalPrice)}</span>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="text-right text-xs font-semibold text-primary-600 dark:text-primary-400 mt-1.5">
+                      {formatCurrency(order.totalAmount)}
+                    </div>
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -350,6 +357,11 @@ export function HotelRoomMenuPage({ business, initialRoom }: HotelRoomMenuPagePr
         </div>
       </div>
 
+      {/* Live Order Tracker */}
+      {sessionId && (
+        <OrderTracker sessionId={sessionId} businessId={business.id} />
+      )}
+
       {/* Menu Items */}
       <div className="max-w-2xl mx-auto px-4 pb-24 space-y-6">
         {Object.entries(groupedItems).map(([category, catItems]) => (
@@ -372,11 +384,6 @@ export function HotelRoomMenuPage({ business, initialRoom }: HotelRoomMenuPagePr
           <div className="text-center py-16 text-gray-400"><p>No items found</p></div>
         )}
       </div>
-
-      {/* Live Order Tracker */}
-      {sessionId && (
-        <OrderTracker sessionId={sessionId} businessId={business.id} />
-      )}
 
       {/* Bottom Bar */}
       {(cartCount > 0 || sessionId) && (

@@ -20,19 +20,36 @@ type Range = "7d" | "30d" | "90d";
 export function AnalyticsClient({ businessId, businessType }: AnalyticsClientProps) {
   const [range, setRange] = useState<Range>("30d");
 
-  const { data: revenueData, isLoading: revenueLoading } = useQuery({
+  const { data: revenueData, isLoading: revenueLoading, isError: revenueError } = useQuery({
     queryKey: ["analytics-revenue", businessId, range],
-    queryFn: () =>
-      fetch(`/api/dashboard/revenue?businessId=${businessId}&range=${range}`)
-        .then((r) => r.json()),
+    queryFn: async () => {
+      const r = await fetch(`/api/dashboard/revenue?businessId=${businessId}&range=${range}`);
+      if (!r.ok) throw new Error("Revenue API failed");
+      const json = await r.json();
+      // API returns array directly
+      return Array.isArray(json) ? json : [];
+    },
   });
 
-  const { data: summaryData, isLoading: summaryLoading } = useQuery({
+  const { data: summaryData, isLoading: summaryLoading, isError: summaryError } = useQuery({
     queryKey: ["analytics-summary", businessId, range],
-    queryFn: () =>
-      fetch(`/api/analytics/summary?businessId=${businessId}&range=${range}`)
-        .then((r) => r.json()),
+    queryFn: async () => {
+      const r = await fetch(`/api/analytics/summary?businessId=${businessId}&range=${range}`);
+      if (!r.ok) throw new Error("Summary API failed");
+      return r.json();
+    },
   });
+
+  if (revenueError && summaryError) {
+    return (
+      <div className="card p-8 text-center space-y-3">
+        <p className="text-gray-500">Failed to load analytics data.</p>
+        <button onClick={() => window.location.reload()} className="btn-secondary text-sm">
+          Try Again
+        </button>
+      </div>
+    );
+  }
 
   const showHotel = businessType === "HOTEL" || businessType === "BOTH";
   const showRestaurant = businessType === "RESTAURANT" || businessType === "BOTH";

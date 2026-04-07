@@ -20,6 +20,15 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     }
 
     const body = await req.json();
+
+    // Auto-recalculate nights when check-in or check-out is updated
+    if (body.checkOut || body.checkIn) {
+      const checkIn = new Date(body.checkIn ?? booking.checkIn);
+      const checkOut = new Date(body.checkOut ?? booking.checkOut);
+      const nights = Math.max(1, Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)));
+      body.nights = nights;
+    }
+
     const updated = await prisma.booking.update({
       where: { id: params.id },
       data: body,
