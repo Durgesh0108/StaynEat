@@ -15,6 +15,7 @@ import { ErrorCard } from "@/components/ui/error-card";
 export default async function DashboardPage() {
   const session = await auth();
   if (!session?.user) redirect("/login");
+  if (session.user.role === "SUPER_ADMIN") redirect("/admin");
 
   let business = null;
   try {

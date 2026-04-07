@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { signIn } from "next-auth/react";
+import { signIn, getSession } from "next-auth/react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Eye, EyeOff, Mail, Lock, Loader2 } from "lucide-react";
@@ -44,7 +44,12 @@ export function LoginForm() {
         toast.error(result.error === "CredentialsSignin" ? "Invalid email or password" : result.error);
       } else {
         toast.success("Welcome back!");
-        router.push(callbackUrl);
+        const session = await getSession();
+        if (session?.user?.role === "SUPER_ADMIN") {
+          router.push("/admin");
+        } else {
+          router.push(callbackUrl);
+        }
         router.refresh();
       }
     } catch {
