@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { persist, createJSONStorage } from "zustand/middleware";
 import { MenuItem, CartItem } from "@/types";
 
 interface CartStore {
@@ -22,8 +22,8 @@ interface CartStore {
   addItem: (menuItem: MenuItem, quantity?: number) => void;
   removeItem: (menuItemId: string) => void;
   updateQuantity: (menuItemId: string, quantity: number) => void;
-  clearItems: () => void;   // clears items only, keeps session (used after "Get Order")
-  clearCart: () => void;    // clears everything including session (used after final checkout)
+  clearItems: () => void;
+  clearCart: () => void;
   applyCoupon: (code: string, discount: number) => void;
   removeCoupon: () => void;
 
@@ -50,9 +50,9 @@ export const useCartStore = create<CartStore>()(
 
       setTable: (tableId, tableNumber) => {
         const state = get();
-        // new table = new session
         if (state.tableId !== tableId) {
-          set({ tableId, tableNumber, roomId: null, roomNumber: null, sessionId: crypto.randomUUID() });
+          // Different table — fresh session and fresh cart
+          set({ tableId, tableNumber, roomId: null, roomNumber: null, sessionId: crypto.randomUUID(), items: [], couponCode: null, discount: 0 });
         } else {
           set({ tableId, tableNumber, roomId: null, roomNumber: null });
         }
@@ -61,7 +61,7 @@ export const useCartStore = create<CartStore>()(
       setRoom: (roomId, roomNumber) => {
         const state = get();
         if (state.roomId !== roomId) {
-          set({ roomId, roomNumber, tableId: null, tableNumber: null, sessionId: crypto.randomUUID() });
+          set({ roomId, roomNumber, tableId: null, tableNumber: null, sessionId: crypto.randomUUID(), items: [], couponCode: null, discount: 0 });
         } else {
           set({ roomId, roomNumber, tableId: null, tableNumber: null });
         }
@@ -83,9 +83,7 @@ export const useCartStore = create<CartStore>()(
         if (existing) {
           set({
             items: items.map((i) =>
-              i.menuItem.id === menuItem.id
-                ? { ...i, quantity: i.quantity + quantity }
-                : i
+              i.menuItem.id === menuItem.id ? { ...i, quantity: i.quantity + quantity } : i
             ),
           });
         } else {
@@ -98,70 +96,29 @@ export const useCartStore = create<CartStore>()(
       },
 
       updateQuantity: (menuItemId, quantity) => {
-        if (quantity <= 0) {
-          get().removeItem(menuItemId);
-          return;
-        }
-        set({
-          items: get().items.map((i) =>
-            i.menuItem.id === menuItemId ? { ...i, quantity } : i
-          ),
-        });
+        if (quantity <= 0) { get().removeItem(menuItemId); return; }
+        set({ items: get().items.map((i) => i.menuItem.id === menuItemId ? { ...i, quantity } : i) });
       },
 
       clearItems: () => set({ items: [], couponCode: null, discount: 0 }),
 
       clearCart: () =>
-        set({
-          items: [],
-          tableId: null,
-          tableNumber: null,
-          roomId: null,
-          roomNumber: null,
-          sessionId: null,
-          couponCode: null,
-          discount: 0,
-        }),
+        set({ items: [], tableId: null, tableNumber: null, roomId: null, roomNumber: null, sessionId: null, couponCode: null, discount: 0 }),
 
       applyCoupon: (code, discount) => set({ couponCode: code, discount }),
-
       removeCoupon: () => set({ couponCode: null, discount: 0 }),
 
-      getSubtotal: () =>
-        get().items.reduce(
-          (sum, item) => sum + item.menuItem.price * item.quantity,
-          0
-        ),
-
-      getTaxAmount: (taxPercentage = 18) => {
-        const subtotal = get().getSubtotal();
-        return (subtotal * taxPercentage) / 100;
-      },
-
-      getTotal: (taxPercentage = 18) => {
-        const subtotal = get().getSubtotal();
-        const tax = get().getTaxAmount(taxPercentage);
-        const discount = get().discount;
-        return Math.max(0, subtotal + tax - discount);
-      },
-
-      getItemCount: () =>
-        get().items.reduce((sum, item) => sum + item.quantity, 0),
+      getSubtotal: () => get().items.reduce((sum, item) => sum + item.menuItem.price * item.quantity, 0),
+      getTaxAmount: (taxPercentage = 18) => (get().getSubtotal() * taxPercentage) / 100,
+      getTotal: (taxPercentage = 18) => Math.max(0, get().getSubtotal() + get().getTaxAmount(taxPercentage) - get().discount),
+      getItemCount: () => get().items.reduce((sum, item) => sum + item.quantity, 0),
     }),
     {
       name: "hospitpro-cart",
-      partialize: (state) => ({
-        businessId: state.businessId,
-        businessSlug: state.businessSlug,
-        tableId: state.tableId,
-        tableNumber: state.tableNumber,
-        roomId: state.roomId,
-        roomNumber: state.roomNumber,
-        sessionId: state.sessionId,
-        items: state.items,
-        couponCode: state.couponCode,
-        discount: state.discount,
-      }),
+      // sessionStorage is tab-isolated — each browser tab has its own cart
+      storage: createJSONStorage(() =>
+        typeof window !== "undefined" ? sessionStorage : localStorage
+      ),
     }
   )
 );
