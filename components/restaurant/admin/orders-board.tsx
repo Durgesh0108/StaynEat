@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Clock, RefreshCw, Bell } from "lucide-react";
+import { Clock, RefreshCw, Bell, Search, ChevronLeft, ChevronRight, Filter } from "lucide-react";
 import { OrderStatus } from "@/types";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { formatCurrency } from "@/utils/formatCurrency";
@@ -28,6 +28,7 @@ interface ExtendedOrder extends Record<string, unknown> {
   specialInstructions?: string | null;
   totalAmount: number;
   table?: { tableNumber: string } | null;
+  room?: { roomNumber: string; name: string } | null;
   items: Array<{
     id: string;
     quantity: number;
@@ -68,8 +69,15 @@ function OrderCard({
         <div>
           <p className="font-mono text-xs text-gray-400">#{order.id.slice(-6).toUpperCase()}</p>
           <p className="font-semibold text-sm text-gray-900 dark:text-white">
-            {order.table ? `Table ${order.table.tableNumber}` : order.guestName ?? "Guest"}
+            {order.room
+              ? `Room ${order.room.roomNumber}`
+              : order.table
+              ? `Table ${order.table.tableNumber}`
+              : order.guestName ?? "Guest"}
           </p>
+          {order.type === "ROOM_SERVICE" && (
+            <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-1.5 py-0.5 rounded font-medium">Room Service</span>
+          )}
         </div>
         <div className={cn("text-xs flex items-center gap-1 font-medium", isLate ? "text-red-600" : "text-gray-400")}>
           <Clock className="h-3 w-3" />
@@ -120,37 +128,69 @@ interface OrdersBoardProps {
   initialOrders: ExtendedOrder[];
 }
 
+const PAGE_SIZE = 20;
+
 export function OrdersBoard({ businessId, initialOrders }: OrdersBoardProps) {
   const [orders, setOrders] = useState<ExtendedOrder[]>(initialOrders);
   const [lastCount, setLastCount] = useState(initialOrders.length);
   const [view, setView] = useState<"kanban" | "list">("kanban");
 
-  const fetchOrders = useCallback(async () => {
+  // Filters
+  const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [typeFilter, setTypeFilter] = useState<string>("all");
+  const [search, setSearch] = useState("");
+
+  // Pagination (list view)
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(initialOrders.length);
+  const [listLoading, setListLoading] = useState(false);
+
+  const buildQuery = useCallback((overridePage?: number) => {
+    const params = new URLSearchParams({ businessId, limit: String(PAGE_SIZE) });
+    params.set("page", String(overridePage ?? page));
+    if (statusFilter !== "all") params.set("status", statusFilter);
+    if (typeFilter !== "all") params.set("type", typeFilter);
+    if (search) params.set("search", search);
+    return params.toString();
+  }, [businessId, page, statusFilter, typeFilter, search]);
+
+  const fetchOrders = useCallback(async (isBackground = false) => {
     try {
-      const res = await fetch(`/api/orders?businessId=${businessId}&limit=100`);
+      if (!isBackground) setListLoading(true);
+      const res = await fetch(`/api/orders?${buildQuery()}`);
       if (!res.ok) return;
       const data = await res.json();
       const newOrders: ExtendedOrder[] = data.data ?? [];
+      setTotal(data.total ?? 0);
 
-      // Detect new orders
-      const newCount = newOrders.filter((o) =>
-        ["PENDING", "CONFIRMED"].includes(o.status)
-      ).length;
-
-      if (newCount > lastCount) {
-        toast.success(`${newCount - lastCount} new order(s)!`, {
-          icon: "🔔",
-          duration: 5000,
-        });
+      if (isBackground) {
+        const newCount = newOrders.filter((o) => ["PENDING", "CONFIRMED"].includes(o.status)).length;
+        if (newCount > lastCount) {
+          toast.success(`${newCount - lastCount} new order(s)!`, { icon: "🔔", duration: 5000 });
+        }
+        setLastCount(newCount);
       }
-      setLastCount(newCount);
       setOrders(newOrders);
     } catch { /* silent fail */ }
-  }, [businessId, lastCount]);
+    finally { if (!isBackground) setListLoading(false); }
+  }, [buildQuery, lastCount]);
 
-  // Poll every 30 seconds
+  // Re-fetch when filters/page change
   useEffect(() => {
-    const interval = setInterval(fetchOrders, 30000);
+    fetchOrders(false);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [statusFilter, typeFilter, page]);
+
+  // Search with debounce
+  useEffect(() => {
+    const t = setTimeout(() => { setPage(1); fetchOrders(false); }, 400);
+    return () => clearTimeout(t);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [search]);
+
+  // Background poll every 30s
+  useEffect(() => {
+    const interval = setInterval(() => fetchOrders(true), 30000);
     return () => clearInterval(interval);
   }, [fetchOrders]);
 
@@ -167,34 +207,88 @@ export function OrdersBoard({ businessId, initialOrders }: OrdersBoardProps) {
     } catch { toast.error("Failed to update order"); }
   };
 
-  const activeOrders = orders.filter((o) => !["DELIVERED", "CANCELLED"].includes(o.status));
   const pendingCount = orders.filter((o) => o.status === "PENDING").length;
+  const totalPages = Math.ceil(total / PAGE_SIZE);
+
+  // Filtered orders for kanban (client-side since kanban loads by status column)
+  const filteredOrders = orders.filter((o) => {
+    if (typeFilter !== "all" && o.type !== typeFilter) return false;
+    if (search) {
+      const q = search.toLowerCase();
+      const tableNum = o.table?.tableNumber ?? "";
+      const roomNum = o.room?.roomNumber ?? "";
+      const guest = o.guestName ?? "";
+      if (!tableNum.toLowerCase().includes(q) && !roomNum.toLowerCase().includes(q) && !guest.toLowerCase().includes(q)) return false;
+    }
+    return true;
+  });
 
   return (
     <>
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
-            {["kanban", "list"].map((v) => (
-              <button
-                key={v}
-                onClick={() => setView(v as typeof view)}
-                className={`px-3 py-1.5 text-xs rounded-md font-medium transition-all capitalize ${
-                  view === v ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm" : "text-gray-500"
-                }`}
-              >
-                {v}
-              </button>
-            ))}
-          </div>
-          {pendingCount > 0 && (
-            <div className="flex items-center gap-1 bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-400 text-xs px-2.5 py-1.5 rounded-lg">
-              <Bell className="h-3 w-3" />
-              {pendingCount} pending
-            </div>
-          )}
+      {/* Controls */}
+      <div className="flex flex-wrap items-center gap-3">
+        {/* View toggle */}
+        <div className="flex gap-1 bg-gray-100 dark:bg-gray-800 rounded-lg p-0.5">
+          {["kanban", "list"].map((v) => (
+            <button
+              key={v}
+              onClick={() => setView(v as typeof view)}
+              className={`px-3 py-1.5 text-xs rounded-md font-medium transition-all capitalize ${
+                view === v ? "bg-white dark:bg-gray-700 text-gray-900 dark:text-white shadow-sm" : "text-gray-500"
+              }`}
+            >
+              {v}
+            </button>
+          ))}
         </div>
-        <button onClick={fetchOrders} className="btn-secondary text-xs flex items-center gap-1.5">
+
+        {/* Pending badge */}
+        {pendingCount > 0 && (
+          <div className="flex items-center gap-1 bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-400 text-xs px-2.5 py-1.5 rounded-lg">
+            <Bell className="h-3 w-3" />
+            {pendingCount} pending
+          </div>
+        )}
+
+        <div className="flex-1" />
+
+        {/* Search */}
+        <div className="relative">
+          <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-gray-400" />
+          <input
+            type="text"
+            placeholder="Table, room, guest..."
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            className="input py-1.5 pl-8 pr-3 text-xs w-44"
+          />
+        </div>
+
+        {/* Status filter */}
+        <select
+          value={statusFilter}
+          onChange={(e) => { setStatusFilter(e.target.value); setPage(1); }}
+          className="input py-1.5 text-xs w-36"
+        >
+          <option value="all">All Statuses</option>
+          {["PENDING", "CONFIRMED", "PREPARING", "READY", "DELIVERED", "CANCELLED"].map((s) => (
+            <option key={s} value={s}>{s.replace("_", " ")}</option>
+          ))}
+        </select>
+
+        {/* Type filter */}
+        <select
+          value={typeFilter}
+          onChange={(e) => { setTypeFilter(e.target.value); setPage(1); }}
+          className="input py-1.5 text-xs w-36"
+        >
+          <option value="all">All Types</option>
+          <option value="DINE_IN">Dine In</option>
+          <option value="ROOM_SERVICE">Room Service</option>
+          <option value="TAKEAWAY">Takeaway</option>
+        </select>
+
+        <button onClick={() => fetchOrders(false)} className="btn-secondary text-xs flex items-center gap-1.5 py-1.5">
           <RefreshCw className="h-3 w-3" />
           Refresh
         </button>
@@ -203,7 +297,7 @@ export function OrdersBoard({ businessId, initialOrders }: OrdersBoardProps) {
       {view === "kanban" ? (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-3 overflow-x-auto">
           {COLUMNS.map((col) => {
-            const colOrders = orders.filter((o) => o.status === col.status);
+            const colOrders = filteredOrders.filter((o) => o.status === col.status);
             return (
               <div key={col.status} className={cn("rounded-xl border p-3 min-h-[300px]", col.color)}>
                 <div className="flex items-center justify-between mb-3">
@@ -225,55 +319,115 @@ export function OrdersBoard({ businessId, initialOrders }: OrdersBoardProps) {
           })}
         </div>
       ) : (
-        <div className="card overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800">
-              <tr>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Order</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Items</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Amount</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Status</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Time</th>
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Action</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
-              {orders.map((order) => {
-                const nextStatus: Partial<Record<OrderStatus, OrderStatus>> = {
-                  PENDING: "CONFIRMED",
-                  CONFIRMED: "PREPARING",
-                  PREPARING: "READY",
-                  READY: "DELIVERED",
-                };
-                const next = nextStatus[order.status];
-                return (
-                  <tr key={order.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
-                    <td className="px-4 py-3">
-                      <p className="font-mono text-xs text-gray-400">#{order.id.slice(-6).toUpperCase()}</p>
-                      <p className="font-medium text-xs text-gray-900 dark:text-white">
-                        {order.table ? `Table ${order.table.tableNumber}` : order.guestName ?? "Guest"}
-                      </p>
-                    </td>
-                    <td className="px-4 py-3 text-xs text-gray-500">
-                      {order.items.slice(0, 2).map((i) => i.menuItem?.name).join(", ")}
-                      {order.items.length > 2 && ` +${order.items.length - 2}`}
-                    </td>
-                    <td className="px-4 py-3 font-semibold text-sm">{formatCurrency(order.totalAmount)}</td>
-                    <td className="px-4 py-3"><StatusBadge status={order.status} /></td>
-                    <td className="px-4 py-3 text-xs text-gray-400">{formatTimeAgo(order.createdAt)}</td>
-                    <td className="px-4 py-3">
-                      {next && (
-                        <button onClick={() => updateStatus(order.id, next)} className="text-xs px-2 py-1 bg-primary-50 dark:bg-primary-950 text-primary-700 dark:text-primary-400 rounded-lg hover:bg-primary-100 transition-colors">
-                          → {next.replace("_", " ")}
-                        </button>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <div className="card overflow-hidden">
+            <table className="w-full text-sm">
+              <thead className="bg-gray-50 dark:bg-gray-900 border-b border-gray-100 dark:border-gray-800">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Order</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Items</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Amount</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Status</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Type</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Time</th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500">Action</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-50 dark:divide-gray-800">
+                {listLoading ? (
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-xs text-gray-400">Loading...</td></tr>
+                ) : orders.length === 0 ? (
+                  <tr><td colSpan={7} className="px-4 py-8 text-center text-xs text-gray-400">No orders found</td></tr>
+                ) : orders.map((order) => {
+                  const nextStatus: Partial<Record<OrderStatus, OrderStatus>> = {
+                    PENDING: "CONFIRMED",
+                    CONFIRMED: "PREPARING",
+                    PREPARING: "READY",
+                    READY: "DELIVERED",
+                  };
+                  const next = nextStatus[order.status];
+                  return (
+                    <tr key={order.id} className="hover:bg-gray-50 dark:hover:bg-gray-800/50">
+                      <td className="px-4 py-3">
+                        <p className="font-mono text-xs text-gray-400">#{order.id.slice(-6).toUpperCase()}</p>
+                        <p className="font-medium text-xs text-gray-900 dark:text-white">
+                          {order.room
+                            ? `Room ${order.room.roomNumber}`
+                            : order.table
+                            ? `Table ${order.table.tableNumber}`
+                            : order.guestName ?? "Guest"}
+                        </p>
+                        {order.type === "ROOM_SERVICE" && (
+                          <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 px-1.5 py-0.5 rounded font-medium">Room Service</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3 text-xs text-gray-500">
+                        {order.items.slice(0, 2).map((i) => i.menuItem?.name).join(", ")}
+                        {order.items.length > 2 && ` +${order.items.length - 2}`}
+                      </td>
+                      <td className="px-4 py-3 font-semibold text-sm">{formatCurrency(order.totalAmount)}</td>
+                      <td className="px-4 py-3"><StatusBadge status={order.status} /></td>
+                      <td className="px-4 py-3 text-xs text-gray-500">{order.type.replace("_", " ")}</td>
+                      <td className="px-4 py-3 text-xs text-gray-400">{formatTimeAgo(order.createdAt)}</td>
+                      <td className="px-4 py-3">
+                        {next && (
+                          <button onClick={() => updateStatus(order.id, next)} className="text-xs px-2 py-1 bg-primary-50 dark:bg-primary-950 text-primary-700 dark:text-primary-400 rounded-lg hover:bg-primary-100 transition-colors">
+                            → {next.replace("_", " ")}
+                          </button>
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+
+          {/* Pagination */}
+          {totalPages > 1 && (
+            <div className="flex items-center justify-between">
+              <p className="text-xs text-gray-400">
+                Showing {Math.min((page - 1) * PAGE_SIZE + 1, total)}–{Math.min(page * PAGE_SIZE, total)} of {total} orders
+              </p>
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setPage(page - 1)}
+                  disabled={page === 1}
+                  className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800"
+                >
+                  <ChevronLeft className="h-4 w-4" />
+                </button>
+                {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+                  let pageNum: number;
+                  if (totalPages <= 7) pageNum = i + 1;
+                  else if (page <= 4) pageNum = i + 1;
+                  else if (page >= totalPages - 3) pageNum = totalPages - 6 + i;
+                  else pageNum = page - 3 + i;
+                  return (
+                    <button
+                      key={pageNum}
+                      onClick={() => setPage(pageNum)}
+                      className={`w-8 h-8 text-xs rounded-lg border transition-colors ${
+                        page === pageNum
+                          ? "bg-primary-500 text-white border-primary-500"
+                          : "border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 text-gray-600 dark:text-gray-400"
+                      }`}
+                    >
+                      {pageNum}
+                    </button>
+                  );
+                })}
+                <button
+                  onClick={() => setPage(page + 1)}
+                  disabled={page === totalPages}
+                  className="p-1.5 rounded-lg border border-gray-200 dark:border-gray-700 disabled:opacity-40 hover:bg-gray-50 dark:hover:bg-gray-800"
+                >
+                  <ChevronRight className="h-4 w-4" />
+                </button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </>
   );

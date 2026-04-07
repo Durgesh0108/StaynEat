@@ -1,11 +1,12 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
   ShoppingCart, Plus, Minus, X, ChevronRight, Leaf, Flame,
-  Search, Clock, Building, BedDouble,
+  Search, Clock, Building, BedDouble, ChefHat, CheckCircle2,
+  ChevronDown, ChevronUp,
 } from "lucide-react";
 import { MenuItem, MenuCategory } from "@/types";
 import { formatCurrency } from "@/utils/formatCurrency";
@@ -99,6 +100,93 @@ function MenuItemCard({
   );
 }
 
+interface LiveOrderItem {
+  id: string;
+  quantity: number;
+  totalPrice: number;
+  menuItem: { name: string };
+}
+interface LiveOrder {
+  id: string;
+  status: string;
+  items: LiveOrderItem[];
+}
+
+function OrderTracker({ sessionId, businessId }: { sessionId: string; businessId: string }) {
+  const [orders, setOrders] = useState<LiveOrder[]>([]);
+  const [expanded, setExpanded] = useState(true);
+
+  const STATUS_LABEL: Record<string, string> = {
+    PENDING: "Waiting",
+    CONFIRMED: "Confirmed",
+    PREPARING: "Preparing",
+    READY: "Ready to serve",
+    DELIVERED: "Delivered",
+  };
+  const STATUS_COLOR: Record<string, string> = {
+    PENDING: "text-amber-500 bg-amber-50 dark:bg-amber-950",
+    CONFIRMED: "text-blue-500 bg-blue-50 dark:bg-blue-950",
+    PREPARING: "text-orange-500 bg-orange-50 dark:bg-orange-950",
+    READY: "text-teal-600 bg-teal-50 dark:bg-teal-950",
+    DELIVERED: "text-success-600 bg-success-50 dark:bg-success-950",
+  };
+
+  const fetchOrders = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/orders/session?sessionId=${sessionId}&businessId=${businessId}`);
+      const json = await res.json();
+      setOrders(json.orders ?? []);
+    } catch { /* silent */ }
+  }, [sessionId, businessId]);
+
+  useEffect(() => {
+    fetchOrders();
+    const interval = setInterval(fetchOrders, 30000);
+    return () => clearInterval(interval);
+  }, [fetchOrders]);
+
+  if (orders.length === 0) return null;
+
+  return (
+    <div className="max-w-2xl mx-auto px-4 mb-4">
+      <div className="card overflow-hidden">
+        <button
+          onClick={() => setExpanded((e) => !e)}
+          className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-gray-900 dark:text-white bg-gray-50 dark:bg-gray-800/50"
+        >
+          <div className="flex items-center gap-2">
+            <ChefHat className="h-4 w-4 text-primary-500" />
+            Your Orders ({orders.length})
+          </div>
+          {expanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+        </button>
+        {expanded && (
+          <div className="divide-y divide-gray-50 dark:divide-gray-800">
+            {orders.map((order) => (
+              <div key={order.id} className="px-4 py-3">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_COLOR[order.status] ?? "bg-gray-100 text-gray-500"}`}>
+                    {STATUS_LABEL[order.status] ?? order.status}
+                  </span>
+                  {order.status === "DELIVERED" && <CheckCircle2 className="h-4 w-4 text-success-500" />}
+                </div>
+                <div className="space-y-0.5">
+                  {order.items.map((item) => (
+                    <div key={item.id} className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
+                      <span>{item.quantity}× {item.menuItem.name}</span>
+                      <span className="font-medium">{formatCurrency(item.totalPrice)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function HotelRoomMenuPage({ business, initialRoom }: HotelRoomMenuPageProps) {
   const router = useRouter();
   const [activeCategory, setActiveCategory] = useState<string>("all");
@@ -106,13 +194,20 @@ export function HotelRoomMenuPage({ business, initialRoom }: HotelRoomMenuPagePr
   const [search, setSearch] = useState("");
   const [cartOpen, setCartOpen] = useState(false);
 
-  const { items, addItem, removeItem, updateQuantity, getSubtotal, getTaxAmount, getTotal, getItemCount, setBusiness, setRoom, sessionId, initSession, clearItems } = useCartStore();
+  const { items, addItem, removeItem, updateQuantity, getSubtotal, getTaxAmount, getTotal, getItemCount, setBusiness, setRoom, setSession, sessionId, initSession, clearItems } = useCartStore();
   const [placingOrder, setPlacingOrder] = useState(false);
 
-  useState(() => {
+  useEffect(() => {
     setBusiness(business.id, business.slug);
-    if (initialRoom) setRoom(initialRoom.id, initialRoom.roomNumber);
-  });
+    if (initialRoom) {
+      setRoom(initialRoom.id, initialRoom.roomNumber);
+      fetch(`/api/public/room-session?roomId=${initialRoom.id}`)
+        .then((r) => r.json())
+        .then((data) => { if (data.sessionId) setSession(data.sessionId); })
+        .catch(() => {/* use local fallback */});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialRoom?.id]);
 
   const categories = useMemo(() => Array.from(new Set(business.menuItems.map((i) => i.category))), [business.menuItems]);
 
@@ -277,6 +372,11 @@ export function HotelRoomMenuPage({ business, initialRoom }: HotelRoomMenuPagePr
           <div className="text-center py-16 text-gray-400"><p>No items found</p></div>
         )}
       </div>
+
+      {/* Live Order Tracker */}
+      {sessionId && (
+        <OrderTracker sessionId={sessionId} businessId={business.id} />
+      )}
 
       {/* Bottom Bar */}
       {(cartCount > 0 || sessionId) && (

@@ -305,11 +305,13 @@ model Room {
   amenities     String[]
   floor         Int?
 
-  isAvailable   Boolean  @default(true)
-  isActive      Boolean  @default(true)
+  isAvailable     Boolean  @default(true)
+  isActive        Boolean  @default(true)
+  activeSessionId String?  // shared session for room service ordering
 
   bookings      Booking[]
   qrCodes       QRCode[]
+  orders        Order[]
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -394,11 +396,12 @@ model Table {
   businessId  String   @db.ObjectId
   business    Business @relation(fields: [businessId], references: [id], onDelete: Cascade)
 
-  tableNumber String
-  capacity    Int
-  floor       Int?
-  section     String?
-  isActive    Boolean  @default(true)
+  tableNumber     String
+  capacity        Int
+  floor           Int?
+  section         String?
+  isActive        Boolean  @default(true)
+  activeSessionId String?  // shared session for all guests at this table
 
   qrCode      QRCode?
   orders      Order[]
@@ -417,6 +420,7 @@ model Order {
   tableId      String?     @db.ObjectId
   table        Table?      @relation(fields: [tableId], references: [id])
   roomId       String?     @db.ObjectId
+  room         Room?       @relation(fields: [roomId], references: [id])
   bookingId    String?     @db.ObjectId
   booking      Booking?    @relation(fields: [bookingId], references: [id])
   sessionId    String?     // groups multiple orders in one sitting/stay for combined billing

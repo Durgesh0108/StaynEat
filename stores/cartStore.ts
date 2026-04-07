@@ -18,6 +18,7 @@ interface CartStore {
   setTable: (tableId: string, tableNumber: string) => void;
   setRoom: (roomId: string, roomNumber: string) => void;
   setBusiness: (businessId: string, slug: string) => void;
+  setSession: (sessionId: string) => void;
   initSession: () => string;
   addItem: (menuItem: MenuItem, quantity?: number) => void;
   removeItem: (menuItemId: string) => void;
@@ -68,6 +69,8 @@ export const useCartStore = create<CartStore>()(
       },
 
       setBusiness: (businessId, slug) => set({ businessId, businessSlug: slug }),
+
+      setSession: (sessionId) => set({ sessionId }),
 
       initSession: () => {
         const existing = get().sessionId;

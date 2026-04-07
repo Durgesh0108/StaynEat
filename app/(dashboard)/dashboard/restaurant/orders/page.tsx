@@ -21,6 +21,7 @@ export default async function RestaurantOrdersPage() {
       where: { businessId: business.id },
       include: {
         table: { select: { tableNumber: true } },
+        room: { select: { roomNumber: true, name: true } },
         items: {
           include: { menuItem: { select: { name: true, price: true, isVeg: true } } },
         },

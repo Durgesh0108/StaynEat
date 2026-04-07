@@ -19,7 +19,10 @@ export default async function TablesPage() {
 
     const tables = await prisma.table.findMany({
       where: { businessId: business.id },
-      include: { qrCode: true },
+      include: {
+        qrCode: true,
+        _count: { select: { orders: { where: { paymentStatus: "PENDING", status: { notIn: ["DELIVERED", "CANCELLED"] } } } } },
+      },
       orderBy: { tableNumber: "asc" },
     });
 

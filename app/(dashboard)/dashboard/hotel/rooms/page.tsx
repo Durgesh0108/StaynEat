@@ -21,7 +21,10 @@ export default async function HotelRoomsPage() {
     const rooms = await prisma.room.findMany({
       where: { businessId: business.id },
       orderBy: { roomNumber: "asc" },
-      include: { qrCodes: { take: 1, orderBy: { createdAt: "desc" } } },
+      include: {
+        qrCodes: { take: 1, orderBy: { createdAt: "desc" } },
+        _count: { select: { orders: { where: { paymentStatus: "PENDING", status: { notIn: ["DELIVERED", "CANCELLED"] } } } } },
+      },
     });
 
     return (

@@ -1,10 +1,12 @@
 "use client";
 
-import { useState } from "react";
-import { Plus, Edit, Trash2, QrCode, Users } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { Plus, Edit, Trash2, QrCode, Users, Eye, Receipt, RefreshCw } from "lucide-react";
 import { Modal, ConfirmModal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/empty-state";
 import { QRCodeDisplay } from "@/components/ui/qr-code-display";
+import { StatusBadge } from "@/components/ui/status-badge";
+import { formatCurrency } from "@/utils/formatCurrency";
 import toast from "react-hot-toast";
 import { z } from "zod";
 import { useForm } from "react-hook-form";
@@ -26,6 +28,8 @@ interface TableWithQR extends Record<string, unknown> {
   floor?: number | null;
   section?: string | null;
   isActive: boolean;
+  activeSessionId?: string | null;
+  _count?: { orders: number };
   qrCode?: { id: string; url: string; scanCount: number } | null;
 }
 
@@ -35,12 +39,167 @@ interface TablesManagementProps {
   initialTables: TableWithQR[];
 }
 
+interface SessionOrder {
+  id: string;
+  status: string;
+  paymentStatus: string;
+  totalAmount: number;
+  createdAt: string;
+  items: Array<{ id: string; quantity: number; totalPrice: number; menuItem?: { name: string } | null }>;
+}
+
+function TableOrdersModal({
+  table,
+  businessId,
+  onClose,
+}: {
+  table: TableWithQR;
+  businessId: string;
+  onClose: () => void;
+}) {
+  const [orders, setOrders] = useState<SessionOrder[]>([]);
+  const [totals, setTotals] = useState({ grandTotal: 0, unpaidTotal: 0 });
+  const [loading, setLoading] = useState(true);
+  const [paying, setPaying] = useState(false);
+
+  const fetchOrders = useCallback(async () => {
+    if (!table.activeSessionId) return;
+    setLoading(true);
+    try {
+      const res = await fetch(
+        `/api/orders/session?sessionId=${table.activeSessionId}&businessId=${businessId}`
+      );
+      const json = await res.json();
+      setOrders(json.orders ?? []);
+      setTotals({ grandTotal: json.grandTotal ?? 0, unpaidTotal: json.unpaidTotal ?? 0 });
+    } catch {
+      toast.error("Failed to load orders");
+    } finally {
+      setLoading(false);
+    }
+  }, [table.activeSessionId, businessId]);
+
+  useEffect(() => { fetchOrders(); }, [fetchOrders]);
+
+  const generateOfflineBill = async () => {
+    if (!table.activeSessionId || totals.unpaidTotal === 0) return;
+    setPaying(true);
+    try {
+      const res = await fetch("/api/orders/session-pay", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          sessionId: table.activeSessionId,
+          businessId,
+          paymentMethod: "OFFLINE",
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      toast.success("Bill settled! Table is now free.");
+      onClose();
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Payment failed");
+    } finally {
+      setPaying(false);
+    }
+  };
+
+  const STATUS_COLOR: Record<string, string> = {
+    PENDING: "text-amber-600",
+    CONFIRMED: "text-blue-600",
+    PREPARING: "text-orange-600",
+    READY: "text-teal-600",
+    DELIVERED: "text-success-600",
+  };
+
+  return (
+    <div className="p-5 space-y-4 max-h-[70vh] overflow-y-auto">
+      <div className="flex items-center justify-between">
+        <p className="text-sm text-gray-500">{orders.length} order round(s) for this session</p>
+        <button onClick={fetchOrders} className="text-xs text-gray-400 flex items-center gap-1 hover:text-gray-600">
+          <RefreshCw className="h-3 w-3" />Refresh
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="space-y-3">
+          {[1, 2].map((i) => <div key={i} className="h-20 bg-gray-100 dark:bg-gray-800 rounded-xl animate-pulse" />)}
+        </div>
+      ) : orders.length === 0 ? (
+        <p className="text-center text-sm text-gray-400 py-6">No orders placed yet</p>
+      ) : (
+        <>
+          <div className="space-y-3">
+            {orders.map((order, idx) => (
+              <div key={order.id} className="border border-gray-100 dark:border-gray-800 rounded-xl overflow-hidden">
+                <div className="px-3 py-2 bg-gray-50 dark:bg-gray-800/50 flex items-center justify-between">
+                  <span className="text-xs font-semibold text-gray-500">Round {idx + 1}</span>
+                  <div className="flex items-center gap-2">
+                    <span className={`text-xs font-medium ${STATUS_COLOR[order.status] ?? ""}`}>{order.status}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${order.paymentStatus === "PAID" ? "bg-success-100 text-success-700" : "bg-amber-100 text-amber-700"}`}>
+                      {order.paymentStatus === "PAID" ? "Paid" : "Pending"}
+                    </span>
+                  </div>
+                </div>
+                <div className="px-3 py-2 space-y-1">
+                  {order.items.map((item) => (
+                    <div key={item.id} className="flex justify-between text-xs">
+                      <span className="text-gray-600 dark:text-gray-400">{item.quantity}× {item.menuItem?.name}</span>
+                      <span className="font-medium">{formatCurrency(item.totalPrice)}</span>
+                    </div>
+                  ))}
+                  <div className="flex justify-between text-xs text-gray-400 pt-1 border-t border-gray-50 dark:border-gray-800">
+                    <span>Round total</span>
+                    <span className="font-medium text-gray-700 dark:text-gray-300">{formatCurrency(order.totalAmount)}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="border-t border-gray-100 dark:border-gray-800 pt-3 space-y-1.5">
+            <div className="flex justify-between text-sm font-bold text-gray-900 dark:text-white">
+              <span>Grand Total</span>
+              <span className="text-primary-600 dark:text-primary-400">{formatCurrency(totals.grandTotal)}</span>
+            </div>
+            {totals.unpaidTotal > 0 && (
+              <div className="flex justify-between text-sm font-semibold text-danger-600">
+                <span>Amount Due</span>
+                <span>{formatCurrency(totals.unpaidTotal)}</span>
+              </div>
+            )}
+          </div>
+
+          {totals.unpaidTotal > 0 && (
+            <button
+              onClick={generateOfflineBill}
+              disabled={paying}
+              className="w-full btn-primary flex items-center justify-center gap-2 py-3"
+            >
+              <Receipt className="h-4 w-4" />
+              {paying ? "Processing..." : `Settle Bill — ${formatCurrency(totals.unpaidTotal)} (Cash/Card)`}
+            </button>
+          )}
+
+          {totals.unpaidTotal === 0 && (
+            <div className="bg-success-50 dark:bg-success-900/20 rounded-xl px-4 py-3 text-center text-success-700 dark:text-success-400 text-sm font-medium">
+              All orders paid!
+            </div>
+          )}
+        </>
+      )}
+    </div>
+  );
+}
+
 export function TablesManagement({ businessId, businessSlug, initialTables }: TablesManagementProps) {
   const [tables, setTables] = useState<TableWithQR[]>(initialTables);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTable, setEditingTable] = useState<TableWithQR | null>(null);
   const [qrModalTable, setQrModalTable] = useState<TableWithQR | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<TableWithQR | null>(null);
+  const [ordersTable, setOrdersTable] = useState<TableWithQR | null>(null);
   const [loading, setLoading] = useState(false);
 
   const { register, handleSubmit, reset, formState: { errors } } = useForm<FormData>({
@@ -102,13 +261,7 @@ export function TablesManagement({ businessId, businessSlug, initialTables }: Ta
       const res = await fetch("/api/qr-codes", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          businessId,
-          tableId: table.id,
-          type: "TABLE_MENU",
-          url,
-          label: `Table ${table.tableNumber}`,
-        }),
+        body: JSON.stringify({ businessId, tableId: table.id, type: "TABLE_MENU", url, label: `Table ${table.tableNumber}` }),
       });
       const json = await res.json();
       if (!res.ok) throw new Error(json.error);
@@ -134,10 +287,19 @@ export function TablesManagement({ businessId, businessSlug, initialTables }: Ta
     finally { setLoading(false); }
   };
 
+  const occupiedCount = tables.filter((t) => !!t.activeSessionId).length;
+
   return (
     <>
       <div className="flex items-center justify-between">
-        <p className="text-sm text-gray-500">{tables.length} table{tables.length !== 1 ? "s" : ""}</p>
+        <div className="flex items-center gap-3">
+          <p className="text-sm text-gray-500">{tables.length} table{tables.length !== 1 ? "s" : ""}</p>
+          {occupiedCount > 0 && (
+            <span className="text-xs bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 px-2.5 py-1 rounded-full font-medium">
+              {occupiedCount} occupied
+            </span>
+          )}
+        </div>
         <button onClick={openAdd} className="btn-primary flex items-center gap-2">
           <Plus className="h-4 w-4" />
           Add Table
@@ -153,57 +315,79 @@ export function TablesManagement({ businessId, businessSlug, initialTables }: Ta
         />
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {tables.map((table) => (
-            <div key={table.id} className="card p-4 group hover:shadow-md transition-shadow">
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <h3 className="font-bold text-2xl text-primary-600 dark:text-primary-400">
-                    T-{table.tableNumber}
-                  </h3>
-                  <div className="flex items-center gap-1 text-sm text-gray-500">
-                    <Users className="h-3.5 w-3.5" />
-                    {table.capacity} seats
+          {tables.map((table) => {
+            const isOccupied = !!table.activeSessionId;
+            return (
+              <div
+                key={table.id}
+                className={`card p-4 group hover:shadow-md transition-shadow ${isOccupied ? "border-amber-300 dark:border-amber-700 border" : ""}`}
+              >
+                <div className="flex items-start justify-between mb-3">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-2xl text-primary-600 dark:text-primary-400">
+                        T-{table.tableNumber}
+                      </h3>
+                      {isOccupied && (
+                        <span className="text-xs bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full font-medium">
+                          Occupied
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-1 text-sm text-gray-500">
+                      <Users className="h-3.5 w-3.5" />
+                      {table.capacity} seats
+                      {isOccupied && table._count && table._count.orders > 0 && (
+                        <span className="ml-1 text-xs text-orange-500">· {table._count.orders} active orders</span>
+                      )}
+                    </div>
+                    {table.section && (
+                      <p className="text-xs text-gray-400 mt-0.5">{table.section}</p>
+                    )}
                   </div>
-                  {table.section && (
-                    <p className="text-xs text-gray-400 mt-0.5">{table.section}</p>
+                  <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                    <button onClick={() => openEdit(table)} className="p-1.5 bg-gray-100 dark:bg-gray-800 rounded-lg text-gray-500 hover:text-primary-600 transition-colors">
+                      <Edit className="h-3.5 w-3.5" />
+                    </button>
+                    <button onClick={() => setDeleteConfirm(table)} className="p-1.5 bg-gray-100 dark:bg-gray-800 rounded-lg text-gray-500 hover:text-danger-600 transition-colors">
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  {isOccupied && (
+                    <button
+                      onClick={() => setOrdersTable(table)}
+                      className="w-full flex items-center justify-center gap-1.5 text-xs py-2 bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border border-amber-200 dark:border-amber-800 rounded-lg hover:bg-amber-100 transition-colors font-medium"
+                    >
+                      <Eye className="h-3.5 w-3.5" />
+                      View Orders & Bill
+                    </button>
+                  )}
+
+                  {table.qrCode ? (
+                    <button
+                      onClick={() => setQrModalTable(table)}
+                      className="w-full btn-secondary text-xs py-2 flex items-center justify-center gap-1.5"
+                    >
+                      <QrCode className="h-3.5 w-3.5" />
+                      {isOccupied ? "QR Code" : "View / Download QR"}
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => generateQR(table)}
+                      disabled={loading}
+                      className="w-full btn-primary text-xs py-2.5 flex items-center justify-center gap-1.5"
+                    >
+                      <QrCode className="h-3.5 w-3.5" />
+                      Generate QR Code
+                    </button>
                   )}
                 </div>
-                <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => openEdit(table)} className="p-1.5 bg-gray-100 dark:bg-gray-800 rounded-lg text-gray-500 hover:text-primary-600 transition-colors">
-                    <Edit className="h-3.5 w-3.5" />
-                  </button>
-                  <button onClick={() => setDeleteConfirm(table)} className="p-1.5 bg-gray-100 dark:bg-gray-800 rounded-lg text-gray-500 hover:text-danger-600 transition-colors">
-                    <Trash2 className="h-3.5 w-3.5" />
-                  </button>
-                </div>
               </div>
-
-              {table.qrCode ? (
-                <div>
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="text-xs text-success-600 dark:text-success-400 font-medium">✓ QR Generated</p>
-                    <p className="text-xs text-gray-400">{table.qrCode.scanCount} scans</p>
-                  </div>
-                  <button
-                    onClick={() => setQrModalTable(table)}
-                    className="w-full btn-secondary text-xs py-2 flex items-center justify-center gap-1.5"
-                  >
-                    <QrCode className="h-3.5 w-3.5" />
-                    View / Download QR
-                  </button>
-                </div>
-              ) : (
-                <button
-                  onClick={() => generateQR(table)}
-                  disabled={loading}
-                  className="w-full btn-primary text-xs py-2.5 flex items-center justify-center gap-1.5"
-                >
-                  <QrCode className="h-3.5 w-3.5" />
-                  Generate QR Code
-                </button>
-              )}
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
 
@@ -254,6 +438,22 @@ export function TablesManagement({ businessId, businessSlug, initialTables }: Ta
               <p className="text-xs font-mono text-gray-700 dark:text-gray-300 break-all">{qrModalTable.qrCode.url}</p>
             </div>
           </div>
+        )}
+      </Modal>
+
+      {/* Orders Modal */}
+      <Modal
+        isOpen={!!ordersTable}
+        onClose={() => setOrdersTable(null)}
+        title={`Table ${ordersTable?.tableNumber} — Active Orders`}
+        size="md"
+      >
+        {ordersTable && (
+          <TableOrdersModal
+            table={ordersTable}
+            businessId={businessId}
+            onClose={() => setOrdersTable(null)}
+          />
         )}
       </Modal>
 

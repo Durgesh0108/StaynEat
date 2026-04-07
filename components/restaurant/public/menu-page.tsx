@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect, useCallback } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import {
@@ -14,6 +14,10 @@ import {
   Search,
   Clock,
   Building,
+  ChefHat,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
 } from "lucide-react";
 import { MenuItem, MenuCategory } from "@/types";
 import { formatCurrency } from "@/utils/formatCurrency";
@@ -140,6 +144,112 @@ function MenuItemCard({
   );
 }
 
+interface LiveOrderItem {
+  id: string;
+  quantity: number;
+  totalPrice: number;
+  menuItem: { name: string };
+}
+interface LiveOrder {
+  id: string;
+  status: string;
+  createdAt: string;
+  items: LiveOrderItem[];
+  totalAmount: number;
+}
+
+function OrderTracker({ sessionId, businessId }: { sessionId: string; businessId: string }) {
+  const [orders, setOrders] = useState<LiveOrder[]>([]);
+  const [expanded, setExpanded] = useState(true);
+
+  const STATUS_LABEL: Record<string, string> = {
+    PENDING: "Waiting",
+    CONFIRMED: "Confirmed",
+    PREPARING: "Preparing",
+    READY: "Ready to serve",
+    DELIVERED: "Delivered",
+  };
+  const STATUS_COLOR: Record<string, string> = {
+    PENDING: "text-amber-500 bg-amber-50 dark:bg-amber-950",
+    CONFIRMED: "text-blue-500 bg-blue-50 dark:bg-blue-950",
+    PREPARING: "text-orange-500 bg-orange-50 dark:bg-orange-950",
+    READY: "text-teal-600 bg-teal-50 dark:bg-teal-950",
+    DELIVERED: "text-success-600 bg-success-50 dark:bg-success-950",
+  };
+
+  const fetchOrders = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/orders/session?sessionId=${sessionId}&businessId=${businessId}`);
+      const json = await res.json();
+      setOrders(json.orders ?? []);
+    } catch { /* silent */ }
+  }, [sessionId, businessId]);
+
+  useEffect(() => {
+    fetchOrders();
+    const interval = setInterval(fetchOrders, 30000);
+    return () => clearInterval(interval);
+  }, [fetchOrders]);
+
+  if (orders.length === 0) return null;
+
+  const activeOrders = orders.filter((o) => o.status !== "DELIVERED");
+  const deliveredOrders = orders.filter((o) => o.status === "DELIVERED");
+
+  return (
+    <div className="max-w-2xl mx-auto px-4 mb-4">
+      <div className="card overflow-hidden">
+        <button
+          onClick={() => setExpanded((e) => !e)}
+          className="w-full flex items-center justify-between px-4 py-3 text-sm font-semibold text-gray-900 dark:text-white bg-gray-50 dark:bg-gray-800/50"
+        >
+          <div className="flex items-center gap-2">
+            <ChefHat className="h-4 w-4 text-primary-500" />
+            Your Orders ({orders.length})
+            {activeOrders.length > 0 && (
+              <span className="text-xs bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full">
+                {activeOrders.length} in progress
+              </span>
+            )}
+          </div>
+          {expanded ? <ChevronUp className="h-4 w-4 text-gray-400" /> : <ChevronDown className="h-4 w-4 text-gray-400" />}
+        </button>
+
+        {expanded && (
+          <div className="divide-y divide-gray-50 dark:divide-gray-800">
+            {orders.map((order) => (
+              <div key={order.id} className="px-4 py-3">
+                <div className="flex items-center justify-between mb-1.5">
+                  <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${STATUS_COLOR[order.status] ?? "bg-gray-100 text-gray-500"}`}>
+                    {STATUS_LABEL[order.status] ?? order.status}
+                  </span>
+                  {order.status === "DELIVERED" && (
+                    <CheckCircle2 className="h-4 w-4 text-success-500" />
+                  )}
+                </div>
+                <div className="space-y-0.5">
+                  {order.items.map((item) => (
+                    <div key={item.id} className="flex justify-between text-xs text-gray-600 dark:text-gray-400">
+                      <span>{item.quantity}× {item.menuItem.name}</span>
+                      <span className="font-medium">{formatCurrency(item.totalPrice)}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ))}
+            {deliveredOrders.length > 0 && deliveredOrders.length === orders.length && (
+              <div className="px-4 py-2 text-xs text-success-600 flex items-center gap-1.5">
+                <CheckCircle2 className="h-3.5 w-3.5" />
+                All orders delivered. Ready to checkout!
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export function RestaurantMenuPage({ business, initialTable }: RestaurantMenuPageProps) {
   const router = useRouter();
   const [activeCategory, setActiveCategory] = useState<string>("all");
@@ -147,14 +257,22 @@ export function RestaurantMenuPage({ business, initialTable }: RestaurantMenuPag
   const [search, setSearch] = useState("");
   const [cartOpen, setCartOpen] = useState(false);
 
-  const { items, addItem, removeItem, updateQuantity, getSubtotal, getTaxAmount, getTotal, getItemCount, setBusiness, setTable, sessionId, initSession, clearItems } = useCartStore();
+  const { items, addItem, removeItem, updateQuantity, getSubtotal, getTaxAmount, getTotal, getItemCount, setBusiness, setTable, setSession, sessionId, initSession, clearItems } = useCartStore();
   const [placingOrder, setPlacingOrder] = useState(false);
 
-  // Init cart with business
-  useState(() => {
+  // Init cart with business + fetch shared table session from server
+  useEffect(() => {
     setBusiness(business.id, business.slug);
-    if (initialTable) setTable(initialTable.id, initialTable.tableNumber);
-  });
+    if (initialTable) {
+      setTable(initialTable.id, initialTable.tableNumber);
+      // Override with server-side shared session so all guests at same table share one bill
+      fetch(`/api/public/table-session?tableId=${initialTable.id}`)
+        .then((r) => r.json())
+        .then((data) => { if (data.sessionId) setSession(data.sessionId); })
+        .catch(() => {/* use local fallback */});
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialTable?.id]);
 
   const categories = useMemo(() => {
     const cats = Array.from(new Set(business.menuItems.map((i) => i.category)));
@@ -372,6 +490,11 @@ export function RestaurantMenuPage({ business, initialTable }: RestaurantMenuPag
           </div>
         )}
       </div>
+
+      {/* Live Order Tracker */}
+      {sessionId && (
+        <OrderTracker sessionId={sessionId} businessId={business.id} />
+      )}
 
       {/* Bottom Bar */}
       {(cartCount > 0 || sessionId) && (

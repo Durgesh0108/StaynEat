@@ -29,6 +29,20 @@ export async function POST(req: NextRequest) {
 
     const totalAmount = unpaidOrders.reduce((sum, o) => sum + o.totalAmount, 0);
 
+    const clearActiveSession = async () => {
+      // Clear the shared session from table/room so a new one is created next visit
+      const anyOrder = await prisma.order.findFirst({
+        where: { sessionId: data.sessionId, businessId: data.businessId },
+        select: { tableId: true, roomId: true },
+      });
+      if (anyOrder?.tableId) {
+        await prisma.table.update({ where: { id: anyOrder.tableId }, data: { activeSessionId: null } }).catch(() => {});
+      }
+      if (anyOrder?.roomId) {
+        await prisma.room.update({ where: { id: anyOrder.roomId }, data: { activeSessionId: null } }).catch(() => {});
+      }
+    };
+
     if (data.paymentMethod === "ONLINE") {
       if (data.razorpayPaymentId) {
         // Payment verified — mark all as paid
@@ -36,6 +50,7 @@ export async function POST(req: NextRequest) {
           where: { sessionId: data.sessionId, businessId: data.businessId, paymentStatus: "PENDING" },
           data: { paymentStatus: "PAID", razorpayPaymentId: data.razorpayPaymentId },
         });
+        await clearActiveSession();
         return NextResponse.json({ success: true, paid: true });
       }
 
@@ -58,6 +73,7 @@ export async function POST(req: NextRequest) {
       where: { sessionId: data.sessionId, businessId: data.businessId, paymentStatus: "PENDING" },
       data: { paymentStatus: "PAID" },
     });
+    await clearActiveSession();
 
     return NextResponse.json({ success: true, paid: true, totalAmount });
   } catch (err) {

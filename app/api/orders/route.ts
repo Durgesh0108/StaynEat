@@ -137,11 +137,19 @@ export async function GET(req: NextRequest) {
 
   if (!businessId) return NextResponse.json({ error: "businessId required" }, { status: 400 });
 
+  const typeParam = searchParams.get("type");
+  const searchParam = searchParams.get("search");
+
   try {
     const where: Record<string, unknown> = { businessId };
     if (statusParam) {
       const statuses = statusParam.split(",");
       where.status = { in: statuses };
+    }
+    if (typeParam) where.type = typeParam;
+    if (searchParam) {
+      // Search by guestName — table/room numbers require join filtering (done in-memory)
+      where.guestName = { contains: searchParam, mode: "insensitive" };
     }
 
     const [orders, total] = await Promise.all([
@@ -149,6 +157,7 @@ export async function GET(req: NextRequest) {
         where,
         include: {
           table: { select: { tableNumber: true } },
+          room: { select: { roomNumber: true, name: true } },
           items: {
             include: { menuItem: { select: { name: true, isVeg: true } } },
           },
