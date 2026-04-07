@@ -24,13 +24,13 @@ export default async function HotelCalendarPage() {
     const [rooms, bookings] = await Promise.all([
       prisma.room.findMany({
         where: { businessId: business.id, isActive: true },
-        select: { id: true, name: true, type: true },
-        orderBy: { name: "asc" },
+        select: { id: true, name: true, roomNumber: true, type: true },
+        orderBy: [{ floor: "asc" }, { name: "asc" }],
       }),
       prisma.booking.findMany({
         where: {
           businessId: business.id,
-          status: { in: ["CONFIRMED", "CHECKED_IN"] },
+          status: { in: ["PENDING", "CONFIRMED", "CHECKED_IN"] },
           checkIn: { lte: endDate },
           checkOut: { gte: startDate },
         },
@@ -41,6 +41,8 @@ export default async function HotelCalendarPage() {
           checkIn: true,
           checkOut: true,
           status: true,
+          nights: true,
+          finalAmount: true,
         },
       }),
     ]);
