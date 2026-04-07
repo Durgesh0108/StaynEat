@@ -8,6 +8,7 @@ import { z } from "zod";
 const schema = z.object({
   businessId: z.string(),
   tableId: z.string().optional().nullable(),
+  roomId: z.string().optional().nullable(),
   type: z.enum(["TABLE_MENU", "HOTEL_MENU", "HOTEL_BOOKING"]),
   url: z.string().url(),
   label: z.string().optional(),
@@ -23,9 +24,19 @@ export async function POST(req: NextRequest) {
 
     // Check if QR already exists for this table
     if (data.tableId) {
-      const existing = await prisma.qRCode.findFirst({
-        where: { tableId: data.tableId },
-      });
+      const existing = await prisma.qRCode.findFirst({ where: { tableId: data.tableId } });
+      if (existing) {
+        const updated = await prisma.qRCode.update({
+          where: { id: existing.id },
+          data: { url: data.url, isActive: true },
+        });
+        return NextResponse.json({ qrCode: updated });
+      }
+    }
+
+    // Check if QR already exists for this room
+    if (data.roomId) {
+      const existing = await prisma.qRCode.findFirst({ where: { roomId: data.roomId } });
       if (existing) {
         const updated = await prisma.qRCode.update({
           where: { id: existing.id },
@@ -39,6 +50,7 @@ export async function POST(req: NextRequest) {
       data: {
         businessId: data.businessId,
         tableId: data.tableId ?? undefined,
+        roomId: data.roomId ?? undefined,
         type: data.type,
         url: data.url,
         label: data.label,

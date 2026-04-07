@@ -7,12 +7,15 @@ interface CartStore {
   businessSlug: string | null;
   tableId: string | null;
   tableNumber: string | null;
+  roomId: string | null;
+  roomNumber: string | null;
   items: CartItem[];
   couponCode: string | null;
   discount: number;
 
   // Actions
   setTable: (tableId: string, tableNumber: string) => void;
+  setRoom: (roomId: string, roomNumber: string) => void;
   setBusiness: (businessId: string, slug: string) => void;
   addItem: (menuItem: MenuItem, quantity?: number) => void;
   removeItem: (menuItemId: string) => void;
@@ -35,11 +38,15 @@ export const useCartStore = create<CartStore>()(
       businessSlug: null,
       tableId: null,
       tableNumber: null,
+      roomId: null,
+      roomNumber: null,
       items: [],
       couponCode: null,
       discount: 0,
 
-      setTable: (tableId, tableNumber) => set({ tableId, tableNumber }),
+      setTable: (tableId, tableNumber) => set({ tableId, tableNumber, roomId: null, roomNumber: null }),
+
+      setRoom: (roomId, roomNumber) => set({ roomId, roomNumber, tableId: null, tableNumber: null }),
 
       setBusiness: (businessId, slug) => set({ businessId, businessSlug: slug }),
 
@@ -80,6 +87,8 @@ export const useCartStore = create<CartStore>()(
           items: [],
           tableId: null,
           tableNumber: null,
+          roomId: null,
+          roomNumber: null,
           couponCode: null,
           discount: 0,
         }),
@@ -116,6 +125,8 @@ export const useCartStore = create<CartStore>()(
         businessSlug: state.businessSlug,
         tableId: state.tableId,
         tableNumber: state.tableNumber,
+        roomId: state.roomId,
+        roomNumber: state.roomNumber,
         items: state.items,
         couponCode: state.couponCode,
         discount: state.discount,

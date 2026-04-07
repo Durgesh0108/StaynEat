@@ -1,9 +1,10 @@
 "use client";
 
 import { useState } from "react";
-import { Plus, Edit, Trash2, ToggleLeft, ToggleRight, BedDouble } from "lucide-react";
+import { Plus, Edit, Trash2, ToggleLeft, ToggleRight, BedDouble, QrCode } from "lucide-react";
 import { Room, RoomType } from "@/types";
 import { Modal, ConfirmModal } from "@/components/ui/modal";
+import { QRCodeDisplay } from "@/components/ui/qr-code-display";
 import { StatusBadge } from "@/components/ui/status-badge";
 import { EmptyState } from "@/components/ui/empty-state";
 import { ImageUploader } from "@/components/ui/image-uploader";
@@ -36,14 +37,16 @@ const COMMON_AMENITIES = [
 
 interface RoomsManagementProps {
   businessId: string;
+  businessSlug: string;
   initialRooms: Room[];
 }
 
-export function RoomsManagement({ businessId, initialRooms }: RoomsManagementProps) {
+export function RoomsManagement({ businessId, businessSlug, initialRooms }: RoomsManagementProps) {
   const [rooms, setRooms] = useState<Room[]>(initialRooms);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingRoom, setEditingRoom] = useState<Room | null>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<Room | null>(null);
+  const [qrModalRoom, setQrModalRoom] = useState<Room | null>(null);
   const [images, setImages] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedAmenities, setSelectedAmenities] = useState<string[]>([]);
@@ -144,6 +147,35 @@ export function RoomsManagement({ businessId, initialRooms }: RoomsManagementPro
     finally { setLoading(false); }
   };
 
+  const generateQR = async (room: Room) => {
+    setLoading(true);
+    try {
+      const appUrl = process.env.NEXT_PUBLIC_APP_URL ?? window.location.origin;
+      const url = `${appUrl}/h/${businessSlug}/menu?room=${room.roomNumber}`;
+      const res = await fetch("/api/qr-codes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          businessId,
+          roomId: room.id,
+          type: "HOTEL_MENU",
+          url,
+          label: `Room ${room.roomNumber}`,
+        }),
+      });
+      const json = await res.json();
+      if (!res.ok) throw new Error(json.error);
+      const updatedRoom = { ...room, qrCode: json.qrCode };
+      setRooms(rooms.map((r) => (r.id === room.id ? updatedRoom : r)));
+      setQrModalRoom(updatedRoom);
+      toast.success("QR code generated!");
+    } catch (err: unknown) {
+      toast.error(err instanceof Error ? err.message : "Failed to generate QR");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   const toggleAmenity = (amenity: string) => {
     setSelectedAmenities((prev) =>
       prev.includes(amenity) ? prev.filter((a) => a !== amenity) : [...prev, amenity]
@@ -230,6 +262,26 @@ export function RoomsManagement({ businessId, initialRooms }: RoomsManagementPro
                     )}
                   </div>
                 )}
+                <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800">
+                  {room.qrCode ? (
+                    <button
+                      onClick={() => setQrModalRoom(room)}
+                      className="w-full btn-secondary text-xs py-2 flex items-center justify-center gap-1.5"
+                    >
+                      <QrCode className="h-3.5 w-3.5" />
+                      View Room Service QR
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => generateQR(room)}
+                      disabled={loading}
+                      className="w-full btn-primary text-xs py-2 flex items-center justify-center gap-1.5"
+                    >
+                      <QrCode className="h-3.5 w-3.5" />
+                      Generate Room QR
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
           ))}
@@ -342,6 +394,27 @@ export function RoomsManagement({ businessId, initialRooms }: RoomsManagementPro
             </button>
           </div>
         </form>
+      </Modal>
+
+      {/* QR Modal */}
+      <Modal isOpen={!!qrModalRoom} onClose={() => setQrModalRoom(null)} title={`Room Service QR — Room ${qrModalRoom?.roomNumber}`} size="sm">
+        {qrModalRoom?.qrCode && (
+          <div className="p-6 flex flex-col items-center">
+            <QRCodeDisplay
+              url={qrModalRoom.qrCode.url}
+              label={`${qrModalRoom.name} · Room ${qrModalRoom.roomNumber}`}
+              size={200}
+              showDownload
+            />
+            <p className="text-xs text-gray-400 mt-4 text-center">
+              Place this QR code in Room {qrModalRoom.roomNumber}. Guests scan it to order room service directly.
+            </p>
+            <div className="mt-3 w-full p-3 bg-gray-50 dark:bg-gray-800 rounded-xl">
+              <p className="text-xs text-gray-400 mb-1">QR URL</p>
+              <p className="text-xs font-mono text-gray-700 dark:text-gray-300 break-all">{qrModalRoom.qrCode.url}</p>
+            </div>
+          </div>
+        )}
       </Modal>
 
       {/* Delete Confirm */}

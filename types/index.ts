@@ -118,6 +118,7 @@ export interface Room {
   floor?: number | null;
   isAvailable: boolean;
   isActive: boolean;
+  qrCode?: { id: string; url: string; scanCount: number } | null;
   createdAt: Date;
   updatedAt: Date;
 }
