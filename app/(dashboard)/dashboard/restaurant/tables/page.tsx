@@ -13,7 +13,7 @@ export default async function TablesPage() {
   try {
     const business = await prisma.business.findFirst({
       where: { ownerId: session.user.id },
-      select: { id: true, slug: true, type: true },
+      select: { id: true, slug: true, type: true, name: true },
     });
     if (!business) redirect("/dashboard");
 
@@ -35,6 +35,7 @@ export default async function TablesPage() {
         <TablesManagement
           businessId={business.id}
           businessSlug={business.slug}
+          businessName={business.name}
           initialTables={tables as Parameters<typeof TablesManagement>[0]["initialTables"]}
         />
       </div>

@@ -1,7 +1,9 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
-import { Plus, Edit, Trash2, QrCode, Users, Eye, Receipt, RefreshCw } from "lucide-react";
+import { Plus, Edit, Trash2, QrCode, Users, Eye, Receipt, RefreshCw, FileText, Printer, Loader2 } from "lucide-react";
+import { printThermalReceipt, type ThermalPaperSize } from "@/utils/thermalPrint";
+import { format } from "date-fns";
 import { Modal, ConfirmModal } from "@/components/ui/modal";
 import { EmptyState } from "@/components/ui/empty-state";
 import { QRCodeDisplay } from "@/components/ui/qr-code-display";
@@ -36,6 +38,7 @@ interface TableWithQR extends Record<string, unknown> {
 interface TablesManagementProps {
   businessId: string;
   businessSlug: string;
+  businessName: string;
   initialTables: TableWithQR[];
 }
 
@@ -51,16 +54,20 @@ interface SessionOrder {
 function TableOrdersModal({
   table,
   businessId,
+  businessName,
   onClose,
 }: {
   table: TableWithQR;
   businessId: string;
+  businessName: string;
   onClose: () => void;
 }) {
   const [orders, setOrders] = useState<SessionOrder[]>([]);
-  const [totals, setTotals] = useState({ grandTotal: 0, unpaidTotal: 0 });
+  const [totals, setTotals] = useState({ grandTotal: 0, grandSubtotal: 0, grandTax: 0, grandDiscount: 0, unpaidTotal: 0 });
   const [loading, setLoading] = useState(true);
   const [paying, setPaying] = useState(false);
+  const [generatingPDF, setGeneratingPDF] = useState(false);
+  const [paperSize, setPaperSize] = useState<ThermalPaperSize>("80mm");
 
   const fetchOrders = useCallback(async () => {
     if (!table.activeSessionId) return;
@@ -71,7 +78,13 @@ function TableOrdersModal({
       );
       const json = await res.json();
       setOrders(json.orders ?? []);
-      setTotals({ grandTotal: json.grandTotal ?? 0, unpaidTotal: json.unpaidTotal ?? 0 });
+      setTotals({
+        grandTotal: json.grandTotal ?? 0,
+        grandSubtotal: json.grandSubtotal ?? 0,
+        grandTax: json.grandTax ?? 0,
+        grandDiscount: json.grandDiscount ?? 0,
+        unpaidTotal: json.unpaidTotal ?? 0,
+      });
     } catch {
       toast.error("Failed to load orders");
     } finally {
@@ -103,6 +116,57 @@ function TableOrdersModal({
     } finally {
       setPaying(false);
     }
+  };
+
+  const handleDownloadPDF = async (size: "a4" | ThermalPaperSize = "a4") => {
+    if (!table.activeSessionId) return;
+    setGeneratingPDF(true);
+    try {
+      const url = `/api/pdf/bill?sessionId=${encodeURIComponent(table.activeSessionId)}&businessId=${encodeURIComponent(businessId)}&size=${size}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("PDF generation failed");
+      const blob = await res.blob();
+      const objUrl = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = objUrl;
+      a.download = size === "a4"
+        ? `bill-table${table.tableNumber}-${table.activeSessionId.slice(-6).toUpperCase()}.pdf`
+        : `receipt-${size}-table${table.tableNumber}-${table.activeSessionId.slice(-6).toUpperCase()}.pdf`;
+      a.click();
+      URL.revokeObjectURL(objUrl);
+    } catch {
+      toast.error("PDF generation failed. Please try again.");
+    } finally {
+      setGeneratingPDF(false);
+    }
+  };
+
+  const handleThermalPrint = () => {
+    if (!table.activeSessionId) return;
+    printThermalReceipt(
+      {
+        type: "food-bill",
+        businessName,
+        billId: table.activeSessionId,
+        tableNumber: table.tableNumber,
+        context: "restaurant",
+        orders: orders.map((order, idx) => ({
+          index: idx + 1,
+          time: format(new Date(order.createdAt), "hh:mm a"),
+          items: order.items.map((item) => ({
+            name: item.menuItem?.name ?? "Item",
+            qty: item.quantity,
+            price: item.totalPrice,
+          })),
+          total: order.totalAmount,
+        })),
+        subtotal: totals.grandSubtotal,
+        tax: totals.grandTax,
+        discount: totals.grandDiscount,
+        grandTotal: totals.grandTotal,
+      },
+      paperSize
+    );
   };
 
   const STATUS_COLOR: Record<string, string> = {
@@ -171,6 +235,57 @@ function TableOrdersModal({
             )}
           </div>
 
+          {/* Download / Print Bill */}
+          <div className="border border-gray-100 dark:border-gray-800 rounded-xl p-3 space-y-2">
+            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide">Download / Print Bill</p>
+            <div className="flex gap-2 items-stretch">
+              {/* Paper size toggle */}
+              <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden text-xs font-medium">
+                <button
+                  onClick={() => setPaperSize("80mm")}
+                  title="Standard POS printer"
+                  className={`px-2.5 py-1.5 transition-colors ${paperSize === "80mm" ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900" : "text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"}`}
+                >
+                  80mm
+                </button>
+                <button
+                  onClick={() => setPaperSize("57mm")}
+                  title="Mobile printer"
+                  className={`px-2.5 py-1.5 border-l border-gray-200 dark:border-gray-700 transition-colors ${paperSize === "57mm" ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900" : "text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"}`}
+                >
+                  57mm
+                </button>
+              </div>
+              {/* Thermal print */}
+              <button
+                onClick={handleThermalPrint}
+                className="flex-1 flex items-center justify-center gap-1.5 btn-secondary text-xs py-1.5"
+              >
+                <Printer className="h-3.5 w-3.5" />
+                Print Receipt
+              </button>
+              {/* Thermal PDF */}
+              <button
+                onClick={() => handleDownloadPDF(paperSize)}
+                disabled={generatingPDF}
+                title={`Download ${paperSize} receipt PDF`}
+                className="flex items-center justify-center gap-1 btn-secondary text-xs px-2.5"
+              >
+                {generatingPDF ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
+              </button>
+            </div>
+            {/* A4 bill */}
+            <button
+              onClick={() => handleDownloadPDF("a4")}
+              disabled={generatingPDF}
+              className="w-full flex items-center justify-center gap-2 btn-primary text-xs py-2"
+            >
+              {generatingPDF ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
+              {generatingPDF ? "Generating..." : "Download Full Bill (A4 PDF)"}
+            </button>
+            <p className="text-xs text-gray-400">80mm = standard POS · 57mm = mobile / card terminal</p>
+          </div>
+
           {totals.unpaidTotal > 0 && (
             <button
               onClick={generateOfflineBill}
@@ -193,7 +308,7 @@ function TableOrdersModal({
   );
 }
 
-export function TablesManagement({ businessId, businessSlug, initialTables }: TablesManagementProps) {
+export function TablesManagement({ businessId, businessSlug, businessName, initialTables }: TablesManagementProps) {
   const [tables, setTables] = useState<TableWithQR[]>(initialTables);
   const [modalOpen, setModalOpen] = useState(false);
   const [editingTable, setEditingTable] = useState<TableWithQR | null>(null);
@@ -452,6 +567,7 @@ export function TablesManagement({ businessId, businessSlug, initialTables }: Ta
           <TableOrdersModal
             table={ordersTable}
             businessId={businessId}
+            businessName={businessName}
             onClose={() => setOrdersTable(null)}
           />
         )}
