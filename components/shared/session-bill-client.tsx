@@ -164,38 +164,22 @@ export function SessionBillClient({
     printThermalReceipt(buildThermalData(method), paperSize);
   };
 
-  const handleDownloadPDF = async (method?: "ONLINE" | "OFFLINE") => {
+  // ── PDF via server API (Playwright + Tailwind, A4) ──────────────────────
+  const handleDownloadPDF = async (size: "a4" | "80mm" | "57mm" = "a4") => {
     setGeneratingPDF(true);
     try {
-      const [{ pdf }, { FoodBillPDFDocument }, React] = await Promise.all([
-        import("@react-pdf/renderer"),
-        import("@/components/shared/food-bill-pdf-document"),
-        import("react"),
-      ]);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const blob = await pdf(
-        React.createElement(FoodBillPDFDocument as any, {
-          orders,
-          totals: {
-            grandTotal: totals.grandTotal,
-            grandSubtotal: totals.grandSubtotal,
-            grandTax: totals.grandTax,
-            grandDiscount: totals.grandDiscount,
-          },
-          businessName,
-          context,
-          tableNumber,
-          roomNumber,
-          paymentMethod: method,
-          sessionId,
-        }) as any
-      ).toBlob();
-      const url = URL.createObjectURL(blob);
+      const url = `/api/pdf/bill?sessionId=${encodeURIComponent(sessionId)}&businessId=${encodeURIComponent(businessId)}&size=${size}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("PDF generation failed");
+      const blob = await res.blob();
+      const objUrl = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url;
-      a.download = `bill-${sessionId.slice(-8).toUpperCase()}.pdf`;
+      a.href = objUrl;
+      a.download = size === "a4"
+        ? `bill-${sessionId.slice(-8).toUpperCase()}.pdf`
+        : `receipt-${size}-${sessionId.slice(-8).toUpperCase()}.pdf`;
       a.click();
-      URL.revokeObjectURL(url);
+      URL.revokeObjectURL(objUrl);
     } catch (e) {
       console.error("PDF generation failed", e);
       toast.error("PDF generation failed. Please try again.");
@@ -228,26 +212,29 @@ export function SessionBillClient({
 
           {/* Bill actions */}
           <div className="space-y-2 pt-2 w-full">
+            {/* A4 bill download */}
             <button
-              onClick={() => handleDownloadPDF(usedPaymentMethod)}
+              onClick={() => handleDownloadPDF("a4")}
               disabled={generatingPDF}
               className="w-full btn-primary flex items-center justify-center gap-2 py-3"
             >
               {generatingPDF ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
-              {generatingPDF ? "Generating PDF..." : "Download Bill (PDF)"}
+              {generatingPDF ? "Generating PDF..." : "Download Bill (A4 PDF)"}
             </button>
 
-            {/* Paper size + print */}
+            {/* Paper size + thermal print/PDF */}
             <div className="flex gap-2 items-stretch">
               <div className="flex rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden text-sm font-medium">
                 <button
                   onClick={() => setPaperSize("80mm")}
+                  title="Standard retail / POS printer"
                   className={`px-3 py-2 transition-colors ${paperSize === "80mm" ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900" : "text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"}`}
                 >
                   80mm
                 </button>
                 <button
                   onClick={() => setPaperSize("57mm")}
+                  title="Mobile printer / card terminal"
                   className={`px-3 py-2 border-l border-gray-200 dark:border-gray-700 transition-colors ${paperSize === "57mm" ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900" : "text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"}`}
                 >
                   57mm
@@ -259,6 +246,15 @@ export function SessionBillClient({
               >
                 <Printer className="h-4 w-4" />
                 Print Receipt
+              </button>
+              <button
+                onClick={() => handleDownloadPDF(paperSize)}
+                disabled={generatingPDF}
+                title={`Download ${paperSize} receipt PDF`}
+                className="flex items-center justify-center gap-1.5 btn-secondary text-sm px-3"
+              >
+                {generatingPDF ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
+                PDF
               </button>
             </div>
             <p className="text-xs text-gray-400">80mm = standard POS · 57mm = mobile / card terminal</p>
@@ -416,7 +412,7 @@ export function SessionBillClient({
                         Print Bill
                       </button>
                       <button
-                        onClick={() => handleDownloadPDF()}
+                        onClick={() => handleDownloadPDF("a4")}
                         disabled={generatingPDF}
                         className="flex items-center justify-center gap-2 btn-secondary text-sm py-2 px-3"
                       >
@@ -447,7 +443,7 @@ export function SessionBillClient({
                 {/* Download/print after all paid */}
                 <div className="space-y-2">
                   <button
-                    onClick={() => handleDownloadPDF()}
+                    onClick={() => handleDownloadPDF("a4")}
                     disabled={generatingPDF}
                     className="w-full flex items-center justify-center gap-2 btn-primary text-sm py-2.5"
                   >

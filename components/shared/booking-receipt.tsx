@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Download, MessageCircle, Printer, FileText, Loader2 } from "lucide-react";
+import { MessageCircle, Printer, FileText, Loader2 } from "lucide-react";
 import { formatDate } from "@/utils/formatDate";
 import { formatCurrency } from "@/utils/formatCurrency";
 import { printThermalReceipt, type ThermalPaperSize } from "@/utils/thermalPrint";
@@ -27,7 +27,7 @@ interface BookingReceiptProps {
   businessName: string;
 }
 
-function WhatsAppLink({ booking, businessName }: BookingReceiptProps) {
+function whatsAppUrl({ booking, businessName }: BookingReceiptProps) {
   const msg = encodeURIComponent(
     `*Booking Confirmed!* 🎉\n\n` +
     `Hotel: *${businessName}*\n` +
@@ -44,20 +44,16 @@ function WhatsAppLink({ booking, businessName }: BookingReceiptProps) {
 
 export function BookingReceipt({ booking, businessName }: BookingReceiptProps) {
   const bookingId = `#${booking.id.slice(-8).toUpperCase()}`;
-  const [generatingPDF, setGeneratingPDF] = useState(false);
+  const [downloading, setDownloading] = useState(false);
   const [paperSize, setPaperSize] = useState<ThermalPaperSize>("80mm");
 
+  // ── PDF via server API (Playwright + Tailwind, A4) ───────────────────────
   const handleDownloadPDF = async () => {
-    setGeneratingPDF(true);
+    setDownloading(true);
     try {
-      const [{ pdf }, { BookingPDFDocument }] = await Promise.all([
-        import("@react-pdf/renderer"),
-        import("@/components/shared/booking-pdf-document"),
-      ]);
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const blob = await pdf(
-        (await import("react")).createElement(BookingPDFDocument as any, { booking, businessName }) as any
-      ).toBlob();
+      const res = await fetch(`/api/pdf/booking?id=${booking.id}`);
+      if (!res.ok) throw new Error("PDF generation failed");
+      const blob = await res.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
@@ -65,13 +61,13 @@ export function BookingReceipt({ booking, businessName }: BookingReceiptProps) {
       a.click();
       URL.revokeObjectURL(url);
     } catch (e) {
-      console.error("PDF generation failed", e);
-      window.print();
+      console.error(e);
     } finally {
-      setGeneratingPDF(false);
+      setDownloading(false);
     }
   };
 
+  // ── Thermal print via new browser window ─────────────────────────────────
   const handleThermalPrint = () => {
     printThermalReceipt(
       {
@@ -104,14 +100,14 @@ export function BookingReceipt({ booking, businessName }: BookingReceiptProps) {
           <span className="text-xs text-gray-400">{bookingId}</span>
         </div>
         <div className="space-y-2 text-gray-600 dark:text-gray-400">
-          <div className="flex justify-between"><span>Guest</span><strong>{booking.guestName}</strong></div>
-          <div className="flex justify-between"><span>Phone</span><strong>{booking.guestPhone}</strong></div>
+          <div className="flex justify-between"><span>Guest</span><strong className="text-gray-900 dark:text-white">{booking.guestName}</strong></div>
+          <div className="flex justify-between"><span>Phone</span><strong className="text-gray-900 dark:text-white">{booking.guestPhone}</strong></div>
           {booking.room && (
-            <div className="flex justify-between"><span>Room</span><strong>{booking.room.name}</strong></div>
+            <div className="flex justify-between"><span>Room</span><strong className="text-gray-900 dark:text-white">{booking.room.name}</strong></div>
           )}
-          <div className="flex justify-between"><span>Check-in</span><strong>{formatDate(booking.checkIn)}</strong></div>
-          <div className="flex justify-between"><span>Check-out</span><strong>{formatDate(booking.checkOut)}</strong></div>
-          <div className="flex justify-between"><span>Nights</span><strong>{booking.nights}</strong></div>
+          <div className="flex justify-between"><span>Check-in</span><strong className="text-gray-900 dark:text-white">{formatDate(booking.checkIn)}</strong></div>
+          <div className="flex justify-between"><span>Check-out</span><strong className="text-gray-900 dark:text-white">{formatDate(booking.checkOut)}</strong></div>
+          <div className="flex justify-between"><span>Nights</span><strong className="text-gray-900 dark:text-white">{booking.nights}</strong></div>
           {(booking.taxAmount ?? 0) > 0 && (
             <div className="flex justify-between text-xs"><span>Tax</span><span>{formatCurrency(booking.taxAmount!)}</span></div>
           )}
@@ -131,10 +127,10 @@ export function BookingReceipt({ booking, businessName }: BookingReceiptProps) {
         </div>
       </div>
 
-      {/* Actions */}
+      {/* Row 1: WhatsApp + Download PDF */}
       <div className="grid grid-cols-2 gap-2 mb-2">
         <a
-          href={WhatsAppLink({ booking, businessName })}
+          href={whatsAppUrl({ booking, businessName })}
           target="_blank"
           rel="noopener noreferrer"
           className="flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 text-white text-sm font-medium py-2.5 rounded-xl transition-colors"
@@ -144,23 +140,20 @@ export function BookingReceipt({ booking, businessName }: BookingReceiptProps) {
         </a>
         <button
           onClick={handleDownloadPDF}
-          disabled={generatingPDF}
+          disabled={downloading}
           className="flex items-center justify-center gap-2 btn-primary text-sm py-2.5"
         >
-          {generatingPDF ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <FileText className="h-4 w-4" />
-          )}
-          {generatingPDF ? "Generating..." : "Download PDF"}
+          {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+          {downloading ? "Generating..." : "Download PDF"}
         </button>
       </div>
 
-      {/* Paper size picker + print */}
+      {/* Row 2: Paper size toggle + Print Receipt */}
       <div className="flex gap-2 items-stretch">
         <div className="flex rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden text-sm font-medium">
           <button
             onClick={() => setPaperSize("80mm")}
+            title="Standard retail / POS printer"
             className={`px-3 py-2 transition-colors ${
               paperSize === "80mm"
                 ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900"
@@ -171,6 +164,7 @@ export function BookingReceipt({ booking, businessName }: BookingReceiptProps) {
           </button>
           <button
             onClick={() => setPaperSize("57mm")}
+            title="Mobile printer / card terminal"
             className={`px-3 py-2 border-l border-gray-200 dark:border-gray-700 transition-colors ${
               paperSize === "57mm"
                 ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900"
