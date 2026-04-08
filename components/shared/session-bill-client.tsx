@@ -9,6 +9,7 @@ import dynamic from "next/dynamic";
 import toast from "react-hot-toast";
 import { CheckCircle, Clock, Receipt, ChefHat, BedDouble, FileText, Printer, Loader2 } from "lucide-react";
 import { printThermalReceipt, type ThermalFoodBillData, type ThermalPaperSize } from "@/utils/thermalPrint";
+import { WhatsAppBillShare } from "@/components/shared/whatsapp-bill-share";
 
 const RazorpayCheckout = dynamic(
   () => import("@/components/shared/razorpay-checkout").then((m) => m.RazorpayCheckout),
@@ -259,6 +260,17 @@ export function SessionBillClient({
             </div>
             <p className="text-xs text-gray-400">80mm = standard POS · 57mm = mobile / card terminal</p>
           </div>
+
+          {/* WhatsApp bill — only shown after online payment */}
+          {usedPaymentMethod === "ONLINE" && (
+            <div className="w-full pt-2 border-t border-gray-100 dark:border-gray-800">
+              <WhatsAppBillShare
+                type="food-bill"
+                sessionId={sessionId}
+                businessId={businessId}
+              />
+            </div>
+          )}
 
           <a
             href={context === "restaurant" ? `/r/${businessSlug}` : `/h/${businessSlug}`}

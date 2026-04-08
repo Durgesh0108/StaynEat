@@ -16,7 +16,13 @@ import {
   ChevronDown,
   CalendarPlus,
   CalendarCheck,
+  FileText,
+  Printer,
+  Loader2,
+  CreditCard,
 } from "lucide-react";
+import { printThermalReceipt, type ThermalPaperSize } from "@/utils/thermalPrint";
+import { formatDate as fmtDate } from "@/utils/formatDate";
 
 interface ExtendedBooking extends Record<string, unknown> {
   id: string;
@@ -57,6 +63,8 @@ export function BookingsManagement({ businessId, initialBookings }: BookingsMana
   const [extendModalOpen, setExtendModalOpen] = useState(false);
   const [newCheckOut, setNewCheckOut] = useState("");
   const [extendLoading, setExtendLoading] = useState(false);
+  const [pdfLoading, setPdfLoading] = useState(false);
+  const [receiptPaperSize, setReceiptPaperSize] = useState<ThermalPaperSize>("80mm");
 
   const filtered = filter === "all" ? bookings : bookings.filter((b) => b.status === filter);
 
@@ -103,6 +111,61 @@ export function BookingsManagement({ businessId, initialBookings }: BookingsMana
     if (confirm(`Set check-out to today (${today}) for ${booking.guestName}?`)) {
       await updateCheckOut(booking.id, today);
     }
+  };
+
+  const updatePaymentStatus = async (booking: ExtendedBooking, paymentStatus: string) => {
+    setUpdatingId(booking.id);
+    try {
+      const res = await fetch(`/api/bookings/${booking.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ paymentStatus }),
+      });
+      if (!res.ok) throw new Error("Failed to update");
+      setBookings(bookings.map((b) => b.id === booking.id ? { ...b, paymentStatus } : b));
+      if (detailBooking?.id === booking.id) setDetailBooking({ ...detailBooking, paymentStatus });
+      toast.success("Payment status updated");
+    } catch { toast.error("Failed to update payment status"); }
+    finally { setUpdatingId(null); }
+  };
+
+  const handleDownloadPDF = async (bookingId: string) => {
+    setPdfLoading(true);
+    try {
+      const res = await fetch(`/api/pdf/booking?id=${bookingId}`);
+      if (!res.ok) throw new Error("PDF failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `booking-${bookingId.slice(-8).toUpperCase()}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch { toast.error("PDF generation failed"); }
+    finally { setPdfLoading(false); }
+  };
+
+  const handleThermalPrint = (booking: ExtendedBooking) => {
+    printThermalReceipt(
+      {
+        type: "booking",
+        businessName: booking.room?.name ?? "Hotel",
+        bookingId: `#${booking.id.slice(-8).toUpperCase()}`,
+        guestName: booking.guestName,
+        guestPhone: booking.guestPhone,
+        room: booking.room ? `${booking.room.name} #${booking.room.roomNumber}` : undefined,
+        checkIn: fmtDate(booking.checkIn),
+        checkOut: fmtDate(booking.checkOut),
+        nights: booking.nights,
+        subtotal: booking.totalAmount,
+        tax: Math.max(0, booking.finalAmount - booking.totalAmount + booking.discountAmount),
+        discount: booking.discountAmount,
+        total: booking.finalAmount,
+        paymentStatus: booking.paymentStatus,
+        paymentMethod: booking.paymentMethod ?? "OFFLINE",
+      },
+      receiptPaperSize
+    );
   };
 
   const whatsappLink = (booking: ExtendedBooking) => {
@@ -341,18 +404,51 @@ export function BookingsManagement({ businessId, initialBookings }: BookingsMana
               </div>
             </div>
 
-            <div className="card p-4">
-              <div className="flex justify-between text-sm mb-2">
+            <div className="card p-4 space-y-2">
+              <div className="flex justify-between text-sm">
                 <span className="text-gray-500">Total Amount</span>
                 <span className="font-semibold">{formatCurrency(detailBooking.finalAmount)}</span>
-              </div>
-              <div className="flex justify-between text-sm mb-2">
-                <span className="text-gray-500">Payment Status</span>
-                <StatusBadge status={detailBooking.paymentStatus} />
               </div>
               <div className="flex justify-between text-sm">
                 <span className="text-gray-500">Booking Status</span>
                 <StatusBadge status={detailBooking.status} />
+              </div>
+              {/* Payment status with inline update */}
+              <div className="flex items-center justify-between text-sm pt-1 border-t border-gray-100 dark:border-gray-800">
+                <div className="flex items-center gap-2">
+                  <CreditCard className="h-3.5 w-3.5 text-gray-400" />
+                  <span className="text-gray-500">Payment</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <StatusBadge status={detailBooking.paymentStatus} />
+                  {detailBooking.paymentStatus !== "PAID" && (
+                    <button
+                      onClick={() => updatePaymentStatus(detailBooking, "PAID")}
+                      disabled={updatingId === detailBooking.id}
+                      className="text-xs px-2.5 py-1 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors font-medium disabled:opacity-50"
+                    >
+                      {updatingId === detailBooking.id ? "..." : "Mark Paid"}
+                    </button>
+                  )}
+                  {detailBooking.paymentStatus === "PAID" && (
+                    <button
+                      onClick={() => updatePaymentStatus(detailBooking, "REFUNDED")}
+                      disabled={updatingId === detailBooking.id}
+                      className="text-xs px-2.5 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-lg hover:bg-gray-200 transition-colors font-medium disabled:opacity-50"
+                    >
+                      Refund
+                    </button>
+                  )}
+                  {detailBooking.paymentStatus === "PENDING" && (
+                    <button
+                      onClick={() => updatePaymentStatus(detailBooking, "FAILED")}
+                      disabled={updatingId === detailBooking.id}
+                      className="text-xs px-2.5 py-1 text-red-500 hover:underline font-medium disabled:opacity-50"
+                    >
+                      Mark Failed
+                    </button>
+                  )}
+                </div>
               </div>
             </div>
 
@@ -406,6 +502,38 @@ export function BookingsManagement({ businessId, initialBookings }: BookingsMana
                     {s.replace("_", " ")}
                   </button>
                 ))}
+              </div>
+            </div>
+
+            {/* PDF + Print */}
+            <div className="space-y-2 pt-1">
+              <p className="text-xs font-semibold text-gray-400 uppercase tracking-wide">Receipt / PDF</p>
+              <div className="flex gap-2">
+                <button
+                  onClick={() => handleDownloadPDF(detailBooking.id)}
+                  disabled={pdfLoading}
+                  className="flex-1 flex items-center justify-center gap-2 btn-primary text-sm py-2"
+                >
+                  {pdfLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
+                  {pdfLoading ? "Generating..." : "Download PDF (A4)"}
+                </button>
+                <div className="flex rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden text-xs font-medium">
+                  <button
+                    onClick={() => setReceiptPaperSize("80mm")}
+                    className={`px-2.5 py-1.5 transition-colors ${receiptPaperSize === "80mm" ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900" : "text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"}`}
+                  >80mm</button>
+                  <button
+                    onClick={() => setReceiptPaperSize("57mm")}
+                    className={`px-2.5 py-1.5 border-l border-gray-200 dark:border-gray-700 transition-colors ${receiptPaperSize === "57mm" ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900" : "text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"}`}
+                  >57mm</button>
+                </div>
+                <button
+                  onClick={() => handleThermalPrint(detailBooking)}
+                  className="flex items-center gap-1.5 btn-secondary text-sm px-3"
+                >
+                  <Printer className="h-3.5 w-3.5" />
+                  Print
+                </button>
               </div>
             </div>
 

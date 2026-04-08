@@ -5,6 +5,7 @@ import { MessageCircle, Printer, FileText, Loader2 } from "lucide-react";
 import { formatDate } from "@/utils/formatDate";
 import { formatCurrency } from "@/utils/formatCurrency";
 import { printThermalReceipt, type ThermalPaperSize } from "@/utils/thermalPrint";
+import { WhatsAppBillShare } from "@/components/shared/whatsapp-bill-share";
 
 interface BookingReceiptProps {
   booking: {
@@ -185,6 +186,17 @@ export function BookingReceipt({ booking, businessName }: BookingReceiptProps) {
       <p className="text-xs text-gray-400 text-center mt-1.5">
         80mm = standard POS · 57mm = mobile / card terminal
       </p>
+
+      {/* WhatsApp via Twilio (only when payment is done online) */}
+      {booking.paymentStatus === "PAID" && (
+        <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-800">
+          <WhatsAppBillShare
+            type="booking"
+            bookingId={booking.id}
+            defaultPhone={booking.guestPhone}
+          />
+        </div>
+      )}
     </div>
   );
 }

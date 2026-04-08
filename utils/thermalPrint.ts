@@ -178,6 +178,9 @@ export function printThermalReceipt(
     .replace(/\{\{DIVIDER\}\}/g, cfg.divider)
     .replace(/\{\{THIN\}\}/g, cfg.thinDivider);
 
+  // Screen preview width in px: 80mm≈302px, 57mm≈215px — keep popup snug
+  const previewWidthPx = paperSize === "80mm" ? 340 : 260;
+
   const html = `<!DOCTYPE html>
 <html>
 <head>
@@ -186,14 +189,21 @@ export function printThermalReceipt(
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
+    /* ── Screen preview ── */
+    html {
+      background: #e5e7eb;
+    }
     body {
       font-family: 'Courier New', Courier, monospace;
       font-size: ${cfg.fontSize};
       line-height: 1.45;
       background: #fff;
       color: #000;
-      width: ${cfg.bodyWidth};
-      margin: 0 auto;
+      /* Exact paper width so the screen preview matches print output */
+      width: ${cfg.pageWidth};
+      min-width: ${cfg.pageWidth};
+      max-width: ${cfg.pageWidth};
+      margin: 8px auto;
       padding: ${cfg.padding};
     }
 
@@ -207,7 +217,6 @@ export function printThermalReceipt(
     .pending  { font-weight: bold; }
     .spacer   { height: 8mm; }
 
-    /* Two-column row: label left, value right */
     .row {
       display: flex;
       justify-content: space-between;
@@ -228,34 +237,76 @@ export function printThermalReceipt(
     }
     .total-row { font-size: calc(${cfg.fontSize} + 1px); }
 
-    .divider      { text-align: center; margin: 3px 0; font-size: ${cfg.smallSize}; letter-spacing: 0; }
-    .thin-divider { text-align: center; margin: 2px 0; font-size: ${cfg.smallSize}; color: #777; letter-spacing: 0; }
+    .divider      { text-align: center; margin: 3px 0; font-size: ${cfg.smallSize}; }
+    .thin-divider { text-align: center; margin: 2px 0; font-size: ${cfg.smallSize}; color: #777; }
 
-    /* ---- Print styles ---- */
+    /* Print instruction bar (hidden on print) */
+    .print-bar {
+      position: fixed;
+      bottom: 0; left: 0; right: 0;
+      background: #1f2937;
+      color: #f9fafb;
+      font-family: system-ui, sans-serif;
+      font-size: 11px;
+      padding: 8px 12px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
+    .print-bar button {
+      background: #3b82f6;
+      color: #fff;
+      border: none;
+      border-radius: 6px;
+      padding: 4px 12px;
+      font-size: 11px;
+      cursor: pointer;
+      white-space: nowrap;
+    }
+
+    /* ── Print output ── */
     @media print {
+      html { background: #fff; }
+      .print-bar { display: none; }
       body {
         width: ${cfg.pageWidth};
+        min-width: ${cfg.pageWidth};
+        max-width: ${cfg.pageWidth};
         margin: 0;
         padding: ${cfg.printPadding};
       }
       @page {
-        size: ${cfg.pageWidth} auto;   /* auto height = continuous roll */
-        margin: 0;
+        /* Tells the printer driver to use this paper width.
+           Works automatically for ESC/POS thermal printers.
+           For regular printers: select "${paperSize}" paper in the print dialog. */
+        size: ${cfg.pageWidth} auto;
+        margin: 0mm;
       }
     }
   </style>
 </head>
 <body>
   ${bodyHTML}
+
+  <div class="print-bar">
+    <span>
+      Paper: <strong>${paperSize}</strong>
+      &nbsp;·&nbsp;
+      In print dialog → Paper size → select <strong>${paperSize}</strong>
+    </span>
+    <button onclick="window.print()">Print Now</button>
+  </div>
+
   <script>
     window.onload = function () {
-      setTimeout(function () { window.print(); }, 350);
+      setTimeout(function () { window.print(); }, 400);
     };
   <\/script>
 </body>
 </html>`;
 
-  const win = window.open("", "_blank", "width=460,height=720,scrollbars=yes");
+  const win = window.open("", "_blank", `width=${previewWidthPx + 32},height=720,scrollbars=yes`);
   if (!win) {
     alert("Please allow popups to print the receipt.");
     return;

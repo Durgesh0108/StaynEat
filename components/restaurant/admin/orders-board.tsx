@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { Clock, RefreshCw, Bell, Search, ChevronLeft, ChevronRight, Calendar, X } from "lucide-react";
+import { Clock, RefreshCw, Bell, Search, ChevronLeft, ChevronRight, Calendar, X, FileText, Printer } from "lucide-react";
+import { printThermalReceipt, type ThermalPaperSize } from "@/utils/thermalPrint";
 import { format, startOfMonth, endOfMonth, startOfYear, endOfYear, subDays } from "date-fns";
 import { OrderStatus } from "@/types";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -28,6 +29,8 @@ interface ExtendedOrder extends Record<string, unknown> {
   notes?: string | null;
   specialInstructions?: string | null;
   totalAmount: number;
+  paymentStatus: string;
+  sessionId?: string | null;
   table?: { tableNumber: string } | null;
   room?: { roomNumber: string; name: string } | null;
   items: Array<{
@@ -134,6 +137,53 @@ const PAGE_SIZE = 20;
 export function OrdersBoard({ businessId, initialOrders }: OrdersBoardProps) {
   const [orders, setOrders] = useState<ExtendedOrder[]>(initialOrders);
   const [lastCount, setLastCount] = useState(initialOrders.length);
+  const [billPaperSize, setBillPaperSize] = useState<ThermalPaperSize>("80mm");
+  const [downloadingBillId, setDownloadingBillId] = useState<string | null>(null);
+
+  const downloadSessionBill = async (sessionId: string, size: "a4" | ThermalPaperSize = "a4") => {
+    setDownloadingBillId(sessionId);
+    try {
+      const url = `/api/pdf/bill?sessionId=${encodeURIComponent(sessionId)}&businessId=${encodeURIComponent(businessId)}&size=${size}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error("Failed");
+      const blob = await res.blob();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = size === "a4" ? `bill-${sessionId.slice(-8).toUpperCase()}.pdf` : `receipt-${size}-${sessionId.slice(-8).toUpperCase()}.pdf`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch { toast.error("Failed to generate bill PDF"); }
+    finally { setDownloadingBillId(null); }
+  };
+
+  const printSessionBill = (order: ExtendedOrder) => {
+    if (!order.sessionId) return;
+    // Gather all orders in the same session from local state
+    const sessionOrders = orders.filter((o) => o.sessionId === order.sessionId);
+    const grandTotal = sessionOrders.reduce((s, o) => s + o.totalAmount, 0);
+    printThermalReceipt(
+      {
+        type: "food-bill",
+        businessName: "",  // unknown here without passing business name; use sessionId as fallback
+        billId: order.sessionId,
+        tableNumber: order.table?.tableNumber,
+        roomNumber: order.room?.roomNumber,
+        context: order.type === "ROOM_SERVICE" ? "hotel" : "restaurant",
+        orders: sessionOrders.map((o, idx) => ({
+          index: idx + 1,
+          time: new Date(o.createdAt as Date).toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" }),
+          items: o.items.map((i) => ({ name: i.menuItem?.name ?? "Item", qty: i.quantity, price: i.totalPrice })),
+          total: o.totalAmount,
+        })),
+        subtotal: grandTotal,
+        tax: 0,
+        discount: 0,
+        grandTotal,
+        paymentMethod: undefined,
+      },
+      billPaperSize
+    );
+  };
   const [view, setView] = useState<"kanban" | "list">("kanban");
 
   // Filters
@@ -264,6 +314,32 @@ export function OrdersBoard({ businessId, initialOrders }: OrdersBoardProps) {
             <Bell className="h-3 w-3" />{pendingCount} pending
           </div>
         )}
+
+        {/* Paper size toggle for receipt printing */}
+        <div className="flex items-center gap-1.5">
+          <div className="flex rounded-lg border border-gray-200 dark:border-gray-700 overflow-hidden text-xs font-medium">
+            <button
+              onClick={() => setBillPaperSize("80mm")}
+              title="80mm standard POS"
+              className={`px-2.5 py-1.5 transition-colors ${billPaperSize === "80mm" ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900" : "text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"}`}
+            >80mm</button>
+            <button
+              onClick={() => setBillPaperSize("57mm")}
+              title="57mm mobile printer"
+              className={`px-2.5 py-1.5 border-l border-gray-200 dark:border-gray-700 transition-colors ${billPaperSize === "57mm" ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900" : "text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"}`}
+            >57mm</button>
+          </div>
+          <button
+            onClick={() => {
+              const withSession = orders.find((o) => o.sessionId);
+              if (withSession) printSessionBill(withSession);
+            }}
+            title="Print last session receipt"
+            className="p-1.5 btn-secondary text-xs flex items-center gap-1"
+          >
+            <Printer className="h-3.5 w-3.5" />
+          </button>
+        </div>
 
         <div className="flex-1" />
 
@@ -441,11 +517,23 @@ export function OrdersBoard({ businessId, initialOrders }: OrdersBoardProps) {
                       <td className="px-4 py-3 text-xs text-gray-500">{order.type.replace("_", " ")}</td>
                       <td className="px-4 py-3 text-xs text-gray-400">{formatTimeAgo(order.createdAt)}</td>
                       <td className="px-4 py-3">
-                        {next && (
-                          <button onClick={() => updateStatus(order.id, next)} className="text-xs px-2 py-1 bg-primary-50 dark:bg-primary-950 text-primary-700 dark:text-primary-400 rounded-lg hover:bg-primary-100 transition-colors">
-                            → {next.replace("_", " ")}
-                          </button>
-                        )}
+                        <div className="flex items-center gap-1.5">
+                          {next && (
+                            <button onClick={() => updateStatus(order.id, next)} className="text-xs px-2 py-1 bg-primary-50 dark:bg-primary-950 text-primary-700 dark:text-primary-400 rounded-lg hover:bg-primary-100 transition-colors">
+                              → {next.replace("_", " ")}
+                            </button>
+                          )}
+                          {order.sessionId && (
+                            <button
+                              onClick={() => downloadSessionBill(order.sessionId!, "a4")}
+                              disabled={downloadingBillId === order.sessionId}
+                              title="Download session bill (A4 PDF)"
+                              className="p-1 text-gray-400 hover:text-primary-600 transition-colors"
+                            >
+                              <FileText className="h-3.5 w-3.5" />
+                            </button>
+                          )}
+                        </div>
                       </td>
                     </tr>
                   );
