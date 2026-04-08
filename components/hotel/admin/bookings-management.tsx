@@ -20,6 +20,7 @@ import {
   Printer,
   Loader2,
   CreditCard,
+  AlertCircle,
 } from "lucide-react";
 import { printThermalReceipt, type ThermalPaperSize } from "@/utils/thermalPrint";
 import { formatDate as fmtDate } from "@/utils/formatDate";
@@ -37,6 +38,7 @@ interface ExtendedBooking extends Record<string, unknown> {
   totalAmount: number;
   finalAmount: number;
   discountAmount: number;
+  paidAmount: number;
   couponCode?: string | null;
   paymentStatus: string;
   paymentMethod?: string | null;
@@ -64,6 +66,7 @@ export function BookingsManagement({ businessId, initialBookings }: BookingsMana
   const [newCheckOut, setNewCheckOut] = useState("");
   const [extendLoading, setExtendLoading] = useState(false);
   const [earlyCheckoutBooking, setEarlyCheckoutBooking] = useState<ExtendedBooking | null>(null);
+  const [collectConfirmOpen, setCollectConfirmOpen] = useState(false);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [receiptPaperSize, setReceiptPaperSize] = useState<ThermalPaperSize>("80mm");
 
@@ -95,7 +98,16 @@ export function BookingsManagement({ businessId, initialBookings }: BookingsMana
       });
       if (!res.ok) throw new Error("Failed to update dates");
       const json = await res.json();
-      const updated = { ...detailBooking!, checkOut: new Date(checkOut), nights: json.booking?.nights ?? detailBooking!.nights };
+      const b = json.booking;
+      const updated = {
+        ...detailBooking!,
+        checkOut: new Date(checkOut),
+        nights: b?.nights ?? detailBooking!.nights,
+        totalAmount: b?.totalAmount ?? detailBooking!.totalAmount,
+        finalAmount: b?.finalAmount ?? detailBooking!.finalAmount,
+        paidAmount: b?.paidAmount ?? detailBooking!.paidAmount,
+        paymentStatus: b?.paymentStatus ?? detailBooking!.paymentStatus,
+      };
       setBookings(bookings.map((b) => (b.id === bookingId ? updated : b)));
       setDetailBooking(updated);
       setExtendModalOpen(false);
@@ -114,14 +126,17 @@ export function BookingsManagement({ businessId, initialBookings }: BookingsMana
   const updatePaymentStatus = async (booking: ExtendedBooking, paymentStatus: string) => {
     setUpdatingId(booking.id);
     try {
+      const body: Record<string, unknown> = { paymentStatus };
+      const newPaidAmount = paymentStatus === "PAID" ? booking.finalAmount : paymentStatus === "REFUNDED" ? 0 : booking.paidAmount;
       const res = await fetch(`/api/bookings/${booking.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ paymentStatus }),
+        body: JSON.stringify(body),
       });
       if (!res.ok) throw new Error("Failed to update");
-      setBookings(bookings.map((b) => b.id === booking.id ? { ...b, paymentStatus } : b));
-      if (detailBooking?.id === booking.id) setDetailBooking({ ...detailBooking, paymentStatus });
+      const patch = { paymentStatus, paidAmount: newPaidAmount };
+      setBookings(bookings.map((b) => b.id === booking.id ? { ...b, ...patch } : b));
+      if (detailBooking?.id === booking.id) setDetailBooking({ ...detailBooking, ...patch });
       toast.success("Payment status updated");
     } catch { toast.error("Failed to update payment status"); }
     finally { setUpdatingId(null); }
@@ -222,12 +237,22 @@ export function BookingsManagement({ businessId, initialBookings }: BookingsMana
       key: "finalAmount",
       header: "Amount",
       sortable: true,
-      render: (_, row) => (
-        <div>
-          <p className="font-semibold text-sm">{formatCurrency(row.finalAmount)}</p>
-          <StatusBadge status={row.paymentStatus} />
-        </div>
-      ),
+      render: (_, row) => {
+        const effectivePaid = (row.paidAmount ?? 0) > 0 ? row.paidAmount : row.paymentStatus === "PAID" ? row.finalAmount : 0;
+        const due = Math.max(0, row.finalAmount - effectivePaid);
+        return (
+          <div>
+            <p className="font-semibold text-sm">{formatCurrency(row.finalAmount)}</p>
+            {due > 0 ? (
+              <span className="text-xs font-medium text-danger-600 flex items-center gap-0.5">
+                <AlertCircle className="h-3 w-3" />Due {formatCurrency(due)}
+              </span>
+            ) : (
+              <StatusBadge status={row.paymentStatus} />
+            )}
+          </div>
+        );
+      },
     },
     {
       key: "status",
@@ -373,53 +398,93 @@ export function BookingsManagement({ businessId, initialBookings }: BookingsMana
               </div>
             </div>
 
-            <div className="card p-4 space-y-2">
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Total Amount</span>
-                <span className="font-semibold">{formatCurrency(detailBooking.finalAmount)}</span>
-              </div>
-              <div className="flex justify-between text-sm">
-                <span className="text-gray-500">Booking Status</span>
-                <StatusBadge status={detailBooking.status} />
-              </div>
-              {/* Payment status with inline update */}
-              <div className="flex items-center justify-between text-sm pt-1 border-t border-gray-100 dark:border-gray-800">
-                <div className="flex items-center gap-2">
-                  <CreditCard className="h-3.5 w-3.5 text-gray-400" />
-                  <span className="text-gray-500">Payment</span>
+            {(() => {
+              // Compute effective paid amount (handle legacy records where paidAmount wasn't tracked)
+              const effectivePaid =
+                (detailBooking.paidAmount ?? 0) > 0
+                  ? detailBooking.paidAmount
+                  : detailBooking.paymentStatus === "PAID"
+                  ? detailBooking.finalAmount
+                  : 0;
+              const amountDue = Math.max(0, detailBooking.finalAmount - effectivePaid);
+
+              return (
+                <div className="card p-4 space-y-2">
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Total Charges</span>
+                    <span className="font-semibold">{formatCurrency(detailBooking.finalAmount)}</span>
+                  </div>
+                  {effectivePaid > 0 && (
+                    <div className="flex justify-between text-sm text-success-600">
+                      <span>Paid</span>
+                      <span className="font-medium">{formatCurrency(effectivePaid)}</span>
+                    </div>
+                  )}
+                  {amountDue > 0 && (
+                    <div className="flex justify-between text-sm font-semibold text-danger-600">
+                      <span className="flex items-center gap-1"><AlertCircle className="h-3.5 w-3.5" />Amount Due</span>
+                      <span>{formatCurrency(amountDue)}</span>
+                    </div>
+                  )}
+                  <div className="flex justify-between text-sm">
+                    <span className="text-gray-500">Booking Status</span>
+                    <StatusBadge status={detailBooking.status} />
+                  </div>
+
+                  {/* Payment row */}
+                  <div className="flex items-center justify-between text-sm pt-1 border-t border-gray-100 dark:border-gray-800">
+                    <div className="flex items-center gap-2">
+                      <CreditCard className="h-3.5 w-3.5 text-gray-400" />
+                      <span className="text-gray-500">Payment</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <StatusBadge status={detailBooking.paymentStatus} />
+
+                      {/* Collect outstanding amount (cash/card at counter) */}
+                      {amountDue > 0 && (
+                        <button
+                          onClick={() => setCollectConfirmOpen(true)}
+                          disabled={updatingId === detailBooking.id}
+                          className="text-xs px-2.5 py-1 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors font-medium disabled:opacity-50"
+                        >
+                          {updatingId === detailBooking.id ? "..." : `Collect ${formatCurrency(amountDue)}`}
+                        </button>
+                      )}
+
+                      {/* Already fully paid — allow refund */}
+                      {amountDue === 0 && detailBooking.paymentStatus === "PAID" && (
+                        <button
+                          onClick={() => updatePaymentStatus(detailBooking, "REFUNDED")}
+                          disabled={updatingId === detailBooking.id}
+                          className="text-xs px-2.5 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-lg hover:bg-gray-200 transition-colors font-medium disabled:opacity-50"
+                        >
+                          Refund
+                        </button>
+                      )}
+
+                      {/* Mark as failed (for pending with no amount paid yet) */}
+                      {detailBooking.paymentStatus === "PENDING" && effectivePaid === 0 && (
+                        <button
+                          onClick={() => updatePaymentStatus(detailBooking, "FAILED")}
+                          disabled={updatingId === detailBooking.id}
+                          className="text-xs px-2.5 py-1 text-red-500 hover:underline font-medium disabled:opacity-50"
+                        >
+                          Mark Failed
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Alert when stay was extended with outstanding balance */}
+                  {amountDue > 0 && effectivePaid > 0 && (
+                    <div className="flex items-start gap-2 p-2.5 bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-xl text-xs text-amber-700 dark:text-amber-400 mt-1">
+                      <AlertCircle className="h-3.5 w-3.5 mt-0.5 shrink-0" />
+                      <span>Stay was extended. Collect the remaining {formatCurrency(amountDue)} before check-out.</span>
+                    </div>
+                  )}
                 </div>
-                <div className="flex items-center gap-2">
-                  <StatusBadge status={detailBooking.paymentStatus} />
-                  {detailBooking.paymentStatus !== "PAID" && (
-                    <button
-                      onClick={() => updatePaymentStatus(detailBooking, "PAID")}
-                      disabled={updatingId === detailBooking.id}
-                      className="text-xs px-2.5 py-1 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors font-medium disabled:opacity-50"
-                    >
-                      {updatingId === detailBooking.id ? "..." : "Mark Paid"}
-                    </button>
-                  )}
-                  {detailBooking.paymentStatus === "PAID" && (
-                    <button
-                      onClick={() => updatePaymentStatus(detailBooking, "REFUNDED")}
-                      disabled={updatingId === detailBooking.id}
-                      className="text-xs px-2.5 py-1 bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400 rounded-lg hover:bg-gray-200 transition-colors font-medium disabled:opacity-50"
-                    >
-                      Refund
-                    </button>
-                  )}
-                  {detailBooking.paymentStatus === "PENDING" && (
-                    <button
-                      onClick={() => updatePaymentStatus(detailBooking, "FAILED")}
-                      disabled={updatingId === detailBooking.id}
-                      className="text-xs px-2.5 py-1 text-red-500 hover:underline font-medium disabled:opacity-50"
-                    >
-                      Mark Failed
-                    </button>
-                  )}
-                </div>
-              </div>
-            </div>
+              );
+            })()}
 
             {detailBooking.specialRequests && (
               <div className="card p-4">
@@ -566,6 +631,29 @@ export function BookingsManagement({ businessId, initialBookings }: BookingsMana
           </div>
         </div>
       </Modal>
+
+      {/* Collect Payment Confirm Modal */}
+      {detailBooking && (() => {
+        const effectivePaid =
+          (detailBooking.paidAmount ?? 0) > 0
+            ? detailBooking.paidAmount
+            : detailBooking.paymentStatus === "PAID"
+            ? detailBooking.finalAmount
+            : 0;
+        const amountDue = Math.max(0, detailBooking.finalAmount - effectivePaid);
+        return (
+          <ConfirmModal
+            isOpen={collectConfirmOpen}
+            onClose={() => setCollectConfirmOpen(false)}
+            onConfirm={() => { setCollectConfirmOpen(false); updatePaymentStatus(detailBooking, "PAID"); }}
+            title="Collect Payment"
+            description={`Confirm you have collected ${formatCurrency(amountDue)} from ${detailBooking.guestName} (cash / card at counter). This will mark the booking as fully paid.`}
+            confirmLabel={`Collect ${formatCurrency(amountDue)}`}
+            variant="primary"
+            loading={updatingId === detailBooking.id}
+          />
+        );
+      })()}
 
       {/* Early Check-out Confirm Modal */}
       <ConfirmModal

@@ -343,6 +343,7 @@ model Booking {
   discountAmount Float         @default(0)
   couponCode     String?
   finalAmount    Float
+  paidAmount     Float         @default(0)   // tracks amount actually collected; finalAmount - paidAmount = amount due
 
   // Payment
   paymentStatus  PaymentStatus @default(PENDING)

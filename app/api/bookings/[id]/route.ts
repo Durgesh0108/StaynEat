@@ -21,12 +21,49 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
     const body = await req.json();
 
-    // Auto-recalculate nights when check-in or check-out is updated
+    // Auto-recalculate nights + amounts when check-in/check-out changes
     if (body.checkOut || body.checkIn) {
-      const checkIn = new Date(body.checkIn ?? booking.checkIn);
+      const checkIn  = new Date(body.checkIn  ?? booking.checkIn);
       const checkOut = new Date(body.checkOut ?? booking.checkOut);
       const nights = Math.max(1, Math.ceil((checkOut.getTime() - checkIn.getTime()) / (1000 * 60 * 60 * 24)));
       body.nights = nights;
+
+      // Recalculate financials only when extending (never silently reduce on early checkout)
+      if (nights > booking.nights) {
+        const nightlyRate      = booking.totalAmount / booking.nights;
+        const additionalNights = nights - booking.nights;
+        const newTotalAmount   = booking.totalAmount + nightlyRate * additionalNights;
+        const newFinalAmount   = newTotalAmount - booking.discountAmount;
+        body.totalAmount = newTotalAmount;
+        body.finalAmount = newFinalAmount;
+
+        // Determine how much was previously paid (handle legacy records where paidAmount wasn't tracked)
+        const effectivePaidAmount =
+          (booking.paidAmount ?? 0) > 0
+            ? (booking.paidAmount ?? 0)
+            : booking.paymentStatus === "PAID"
+            ? booking.finalAmount
+            : 0;
+
+        // If legacy record had paidAmount=0 but was fully paid, persist that now
+        if ((booking.paidAmount ?? 0) === 0 && booking.paymentStatus === "PAID") {
+          body.paidAmount = booking.finalAmount;
+        }
+
+        // There's now an outstanding balance — mark payment as PENDING
+        if (newFinalAmount > effectivePaidAmount) {
+          body.paymentStatus = "PENDING";
+        }
+      }
+    }
+
+    // When marking PAID, record the full amount as paid
+    if (body.paymentStatus === "PAID") {
+      body.paidAmount = booking.finalAmount;
+    }
+    // When refunded, clear paid amount
+    if (body.paymentStatus === "REFUNDED") {
+      body.paidAmount = 0;
     }
 
     const updated = await prisma.booking.update({
