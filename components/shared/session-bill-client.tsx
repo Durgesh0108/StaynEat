@@ -8,7 +8,7 @@ import { useCartStore } from "@/stores/cartStore";
 import dynamic from "next/dynamic";
 import toast from "react-hot-toast";
 import { CheckCircle, Clock, Receipt, ChefHat, BedDouble, FileText, Printer, Loader2 } from "lucide-react";
-import { printThermalReceipt, type ThermalFoodBillData } from "@/utils/thermalPrint";
+import { printThermalReceipt, type ThermalFoodBillData, type ThermalPaperSize } from "@/utils/thermalPrint";
 
 const RazorpayCheckout = dynamic(
   () => import("@/components/shared/razorpay-checkout").then((m) => m.RazorpayCheckout),
@@ -69,6 +69,7 @@ export function SessionBillClient({
   const [paid, setPaid] = useState(false);
   const [usedPaymentMethod, setUsedPaymentMethod] = useState<"ONLINE" | "OFFLINE">("OFFLINE");
   const [generatingPDF, setGeneratingPDF] = useState(false);
+  const [paperSize, setPaperSize] = useState<ThermalPaperSize>("80mm");
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -160,7 +161,7 @@ export function SessionBillClient({
   });
 
   const handleThermalPrint = (method?: "ONLINE" | "OFFLINE") => {
-    printThermalReceipt(buildThermalData(method));
+    printThermalReceipt(buildThermalData(method), paperSize);
   };
 
   const handleDownloadPDF = async (method?: "ONLINE" | "OFFLINE") => {
@@ -226,31 +227,42 @@ export function SessionBillClient({
           </p>
 
           {/* Bill actions */}
-          <div className="space-y-2 pt-2">
+          <div className="space-y-2 pt-2 w-full">
             <button
               onClick={() => handleDownloadPDF(usedPaymentMethod)}
               disabled={generatingPDF}
               className="w-full btn-primary flex items-center justify-center gap-2 py-3"
             >
-              {generatingPDF ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <FileText className="h-4 w-4" />
-              )}
+              {generatingPDF ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
               {generatingPDF ? "Generating PDF..." : "Download Bill (PDF)"}
             </button>
-            <button
-              onClick={() => handleThermalPrint(usedPaymentMethod)}
-              className="w-full btn-secondary flex items-center justify-center gap-2 py-3"
-            >
-              <Printer className="h-4 w-4" />
-              Print Receipt
-            </button>
-          </div>
 
-          <p className="text-xs text-gray-400">
-            For thermal printers: select your printer and set paper to 80mm in the print dialog
-          </p>
+            {/* Paper size + print */}
+            <div className="flex gap-2 items-stretch">
+              <div className="flex rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden text-sm font-medium">
+                <button
+                  onClick={() => setPaperSize("80mm")}
+                  className={`px-3 py-2 transition-colors ${paperSize === "80mm" ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900" : "text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"}`}
+                >
+                  80mm
+                </button>
+                <button
+                  onClick={() => setPaperSize("57mm")}
+                  className={`px-3 py-2 border-l border-gray-200 dark:border-gray-700 transition-colors ${paperSize === "57mm" ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900" : "text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"}`}
+                >
+                  57mm
+                </button>
+              </div>
+              <button
+                onClick={() => handleThermalPrint(usedPaymentMethod)}
+                className="flex-1 flex items-center justify-center gap-2 btn-secondary text-sm"
+              >
+                <Printer className="h-4 w-4" />
+                Print Receipt
+              </button>
+            </div>
+            <p className="text-xs text-gray-400">80mm = standard POS · 57mm = mobile / card terminal</p>
+          </div>
 
           <a
             href={context === "restaurant" ? `/r/${businessSlug}` : `/h/${businessSlug}`}
@@ -380,22 +392,39 @@ export function SessionBillClient({
 
                 {/* Pre-payment print option for offline */}
                 {paymentMethod === "OFFLINE" && (
-                  <div className="flex gap-2">
-                    <button
-                      onClick={() => handleThermalPrint()}
-                      className="flex-1 flex items-center justify-center gap-2 btn-secondary text-sm py-2"
-                    >
-                      <Printer className="h-3.5 w-3.5" />
-                      Print Bill
-                    </button>
-                    <button
-                      onClick={() => handleDownloadPDF()}
-                      disabled={generatingPDF}
-                      className="flex-1 flex items-center justify-center gap-2 btn-secondary text-sm py-2"
-                    >
-                      {generatingPDF ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
-                      {generatingPDF ? "..." : "Save PDF"}
-                    </button>
+                  <div className="space-y-2">
+                    <div className="flex gap-2 items-stretch">
+                      <div className="flex rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden text-xs font-medium">
+                        <button
+                          onClick={() => setPaperSize("80mm")}
+                          className={`px-2.5 py-1.5 transition-colors ${paperSize === "80mm" ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900" : "text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"}`}
+                        >
+                          80mm
+                        </button>
+                        <button
+                          onClick={() => setPaperSize("57mm")}
+                          className={`px-2.5 py-1.5 border-l border-gray-200 dark:border-gray-700 transition-colors ${paperSize === "57mm" ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900" : "text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"}`}
+                        >
+                          57mm
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => handleThermalPrint()}
+                        className="flex-1 flex items-center justify-center gap-2 btn-secondary text-sm py-2"
+                      >
+                        <Printer className="h-3.5 w-3.5" />
+                        Print Bill
+                      </button>
+                      <button
+                        onClick={() => handleDownloadPDF()}
+                        disabled={generatingPDF}
+                        className="flex items-center justify-center gap-2 btn-secondary text-sm py-2 px-3"
+                      >
+                        {generatingPDF ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
+                        {generatingPDF ? "..." : "PDF"}
+                      </button>
+                    </div>
+                    <p className="text-xs text-gray-400">80mm = standard POS · 57mm = mobile / card terminal</p>
                   </div>
                 )}
 
@@ -416,22 +445,39 @@ export function SessionBillClient({
                 </div>
 
                 {/* Download/print after all paid */}
-                <div className="flex gap-2">
+                <div className="space-y-2">
                   <button
                     onClick={() => handleDownloadPDF()}
                     disabled={generatingPDF}
-                    className="flex-1 flex items-center justify-center gap-2 btn-primary text-sm py-2.5"
+                    className="w-full flex items-center justify-center gap-2 btn-primary text-sm py-2.5"
                   >
                     {generatingPDF ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
                     {generatingPDF ? "Generating..." : "Download PDF"}
                   </button>
-                  <button
-                    onClick={() => handleThermalPrint()}
-                    className="flex-1 flex items-center justify-center gap-2 btn-secondary text-sm py-2.5"
-                  >
-                    <Printer className="h-4 w-4" />
-                    Print Receipt
-                  </button>
+                  <div className="flex gap-2 items-stretch">
+                    <div className="flex rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden text-sm font-medium">
+                      <button
+                        onClick={() => setPaperSize("80mm")}
+                        className={`px-3 py-2 transition-colors ${paperSize === "80mm" ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900" : "text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"}`}
+                      >
+                        80mm
+                      </button>
+                      <button
+                        onClick={() => setPaperSize("57mm")}
+                        className={`px-3 py-2 border-l border-gray-200 dark:border-gray-700 transition-colors ${paperSize === "57mm" ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900" : "text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"}`}
+                      >
+                        57mm
+                      </button>
+                    </div>
+                    <button
+                      onClick={() => handleThermalPrint()}
+                      className="flex-1 flex items-center justify-center gap-2 btn-secondary text-sm py-2.5"
+                    >
+                      <Printer className="h-4 w-4" />
+                      Print Receipt
+                    </button>
+                  </div>
+                  <p className="text-xs text-gray-400">80mm = standard POS · 57mm = mobile / card terminal</p>
                 </div>
               </>
             )}

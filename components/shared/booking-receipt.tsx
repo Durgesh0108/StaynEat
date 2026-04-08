@@ -4,7 +4,7 @@ import { useState } from "react";
 import { Download, MessageCircle, Printer, FileText, Loader2 } from "lucide-react";
 import { formatDate } from "@/utils/formatDate";
 import { formatCurrency } from "@/utils/formatCurrency";
-import { printThermalReceipt } from "@/utils/thermalPrint";
+import { printThermalReceipt, type ThermalPaperSize } from "@/utils/thermalPrint";
 
 interface BookingReceiptProps {
   booking: {
@@ -45,6 +45,7 @@ function WhatsAppLink({ booking, businessName }: BookingReceiptProps) {
 export function BookingReceipt({ booking, businessName }: BookingReceiptProps) {
   const bookingId = `#${booking.id.slice(-8).toUpperCase()}`;
   const [generatingPDF, setGeneratingPDF] = useState(false);
+  const [paperSize, setPaperSize] = useState<ThermalPaperSize>("80mm");
 
   const handleDownloadPDF = async () => {
     setGeneratingPDF(true);
@@ -72,23 +73,26 @@ export function BookingReceipt({ booking, businessName }: BookingReceiptProps) {
   };
 
   const handleThermalPrint = () => {
-    printThermalReceipt({
-      type: "booking",
-      businessName,
-      bookingId,
-      guestName: booking.guestName,
-      guestPhone: booking.guestPhone,
-      room: booking.room ? `${booking.room.name} #${booking.room.roomNumber}` : undefined,
-      checkIn: formatDate(booking.checkIn),
-      checkOut: formatDate(booking.checkOut),
-      nights: booking.nights,
-      subtotal: booking.totalAmount,
-      tax: booking.taxAmount ?? 0,
-      discount: booking.discountAmount ?? 0,
-      total: booking.finalAmount,
-      paymentStatus: booking.paymentStatus,
-      paymentMethod: booking.paymentMethod ?? "OFFLINE",
-    });
+    printThermalReceipt(
+      {
+        type: "booking",
+        businessName,
+        bookingId,
+        guestName: booking.guestName,
+        guestPhone: booking.guestPhone,
+        room: booking.room ? `${booking.room.name} #${booking.room.roomNumber}` : undefined,
+        checkIn: formatDate(booking.checkIn),
+        checkOut: formatDate(booking.checkOut),
+        nights: booking.nights,
+        subtotal: booking.totalAmount,
+        tax: booking.taxAmount ?? 0,
+        discount: booking.discountAmount ?? 0,
+        total: booking.finalAmount,
+        paymentStatus: booking.paymentStatus,
+        paymentMethod: booking.paymentMethod ?? "OFFLINE",
+      },
+      paperSize
+    );
   };
 
   return (
@@ -152,16 +156,40 @@ export function BookingReceipt({ booking, businessName }: BookingReceiptProps) {
         </button>
       </div>
 
-      <button
-        onClick={handleThermalPrint}
-        className="w-full flex items-center justify-center gap-2 btn-secondary text-sm py-2.5"
-      >
-        <Printer className="h-4 w-4" />
-        Print Receipt (Thermal/Laser)
-      </button>
-
-      <p className="text-xs text-gray-400 text-center mt-2">
-        For thermal printers: select your printer in the print dialog and set paper size to 80mm or 58mm
+      {/* Paper size picker + print */}
+      <div className="flex gap-2 items-stretch">
+        <div className="flex rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden text-sm font-medium">
+          <button
+            onClick={() => setPaperSize("80mm")}
+            className={`px-3 py-2 transition-colors ${
+              paperSize === "80mm"
+                ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900"
+                : "text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"
+            }`}
+          >
+            80mm
+          </button>
+          <button
+            onClick={() => setPaperSize("57mm")}
+            className={`px-3 py-2 border-l border-gray-200 dark:border-gray-700 transition-colors ${
+              paperSize === "57mm"
+                ? "bg-gray-900 text-white dark:bg-white dark:text-gray-900"
+                : "text-gray-500 hover:bg-gray-50 dark:hover:bg-gray-800"
+            }`}
+          >
+            57mm
+          </button>
+        </div>
+        <button
+          onClick={handleThermalPrint}
+          className="flex-1 flex items-center justify-center gap-2 btn-secondary text-sm"
+        >
+          <Printer className="h-4 w-4" />
+          Print Receipt
+        </button>
+      </div>
+      <p className="text-xs text-gray-400 text-center mt-1.5">
+        80mm = standard POS · 57mm = mobile / card terminal
       </p>
     </div>
   );
