@@ -45,11 +45,13 @@ function OrderCard({
   order,
   onStatusChange,
   onDownloadBill,
+  onDownloadBillSized,
   onPrintBill,
 }: {
   order: ExtendedOrder;
   onStatusChange: (id: string, status: OrderStatus) => void;
   onDownloadBill?: (sessionId: string) => void;
+  onDownloadBillSized?: (sessionId: string) => void;
   onPrintBill?: (order: ExtendedOrder) => void;
 }) {
   const minutes = differenceInMinutes(new Date(), new Date(order.createdAt));
@@ -145,6 +147,13 @@ function OrderCard({
           >
             <Printer className="h-3 w-3" />
             Print
+          </button>
+          <button
+            onClick={() => onDownloadBillSized?.(order.sessionId!)}
+            title="Download receipt PDF (selected paper size)"
+            className="flex items-center justify-center gap-1 text-xs text-gray-500 hover:text-primary-600 transition-colors py-1 px-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
+          >
+            <FileText className="h-3 w-3" />
           </button>
         </div>
       )}
@@ -485,6 +494,7 @@ export function OrdersBoard({ businessId, initialOrders }: OrdersBoardProps) {
                       order={order}
                       onStatusChange={updateStatus}
                       onDownloadBill={(sessionId) => downloadSessionBill(sessionId, "a4")}
+                      onDownloadBillSized={(sessionId) => downloadSessionBill(sessionId, billPaperSize)}
                       onPrintBill={printSessionBill}
                     />
                   ))}

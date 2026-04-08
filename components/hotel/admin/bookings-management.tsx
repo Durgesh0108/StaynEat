@@ -503,6 +503,14 @@ export function BookingsManagement({ businessId, initialBookings }: BookingsMana
                   <Printer className="h-3.5 w-3.5" />
                   Print
                 </button>
+                <button
+                  onClick={() => handleDownloadPDF(detailBooking.id)}
+                  disabled={pdfLoading}
+                  title="Download receipt PDF"
+                  className="flex items-center justify-center gap-1 btn-secondary text-sm px-3"
+                >
+                  {pdfLoading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
+                </button>
               </div>
             </div>
 

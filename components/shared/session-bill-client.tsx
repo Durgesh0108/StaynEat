@@ -424,12 +424,12 @@ export function SessionBillClient({
                         Print Bill
                       </button>
                       <button
-                        onClick={() => handleDownloadPDF("a4")}
+                        onClick={() => handleDownloadPDF(paperSize)}
                         disabled={generatingPDF}
-                        className="flex items-center justify-center gap-2 btn-secondary text-sm py-2 px-3"
+                        title={`Download ${paperSize} receipt PDF`}
+                        className="flex items-center justify-center gap-1 btn-secondary text-sm py-2 px-3"
                       >
                         {generatingPDF ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
-                        {generatingPDF ? "..." : "PDF"}
                       </button>
                     </div>
                     <p className="text-xs text-gray-400">80mm = standard POS · 57mm = mobile / card terminal</p>
@@ -483,6 +483,14 @@ export function SessionBillClient({
                     >
                       <Printer className="h-4 w-4" />
                       Print Receipt
+                    </button>
+                    <button
+                      onClick={() => handleDownloadPDF(paperSize)}
+                      disabled={generatingPDF}
+                      title={`Download ${paperSize} receipt PDF`}
+                      className="flex items-center justify-center gap-1 btn-secondary text-sm px-3"
+                    >
+                      {generatingPDF ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
                     </button>
                   </div>
                   <p className="text-xs text-gray-400">80mm = standard POS · 57mm = mobile / card terminal</p>

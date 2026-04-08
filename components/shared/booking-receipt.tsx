@@ -182,6 +182,14 @@ export function BookingReceipt({ booking, businessName }: BookingReceiptProps) {
           <Printer className="h-4 w-4" />
           Print Receipt
         </button>
+        <button
+          onClick={handleDownloadPDF}
+          disabled={downloading}
+          title="Download receipt PDF"
+          className="flex items-center justify-center gap-1 btn-secondary text-sm px-3"
+        >
+          {downloading ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+        </button>
       </div>
       <p className="text-xs text-gray-400 text-center mt-1.5">
         80mm = standard POS · 57mm = mobile / card terminal
