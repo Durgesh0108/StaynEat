@@ -7,7 +7,8 @@ import { formatCurrency } from "@/utils/formatCurrency";
 import { useCartStore } from "@/stores/cartStore";
 import dynamic from "next/dynamic";
 import toast from "react-hot-toast";
-import { CheckCircle, Clock, Receipt, ChefHat, BedDouble } from "lucide-react";
+import { CheckCircle, Clock, Receipt, ChefHat, BedDouble, FileText, Printer, Loader2 } from "lucide-react";
+import { printThermalReceipt, type ThermalFoodBillData } from "@/utils/thermalPrint";
 
 const RazorpayCheckout = dynamic(
   () => import("@/components/shared/razorpay-checkout").then((m) => m.RazorpayCheckout),
@@ -66,6 +67,8 @@ export function SessionBillClient({
   );
   const [razorpayOrder, setRazorpayOrder] = useState<{ id: string; amount: number; currency: string } | null>(null);
   const [paid, setPaid] = useState(false);
+  const [usedPaymentMethod, setUsedPaymentMethod] = useState<"ONLINE" | "OFFLINE">("OFFLINE");
+  const [generatingPDF, setGeneratingPDF] = useState(false);
 
   const fetchOrders = async () => {
     setLoading(true);
@@ -103,6 +106,7 @@ export function SessionBillClient({
       if (paymentMethod === "ONLINE" && json.razorpayOrder) {
         setRazorpayOrder(json.razorpayOrder);
       } else {
+        setUsedPaymentMethod(paymentMethod);
         setPaid(true);
         clearCart();
         toast.success("Payment confirmed! Thank you.");
@@ -121,11 +125,81 @@ export function SessionBillClient({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId, businessId, paymentMethod: "ONLINE", razorpayPaymentId: paymentId }),
       });
+      setUsedPaymentMethod("ONLINE");
       setPaid(true);
       clearCart();
       toast.success("Payment successful! Thank you.");
     } catch {
       toast.error("Payment verification failed");
+    }
+  };
+
+  // Build thermal receipt data from current state
+  const buildThermalData = (method?: "ONLINE" | "OFFLINE"): ThermalFoodBillData => ({
+    type: "food-bill",
+    businessName,
+    billId: sessionId,
+    tableNumber,
+    roomNumber,
+    context,
+    orders: orders.map((order, idx) => ({
+      index: idx + 1,
+      time: format(new Date(order.createdAt), "hh:mm a"),
+      items: order.items.map((item) => ({
+        name: item.menuItem.name,
+        qty: item.quantity,
+        price: item.totalPrice,
+      })),
+      total: order.totalAmount,
+    })),
+    subtotal: totals.grandSubtotal,
+    tax: totals.grandTax,
+    discount: totals.grandDiscount,
+    grandTotal: totals.grandTotal,
+    paymentMethod: method,
+  });
+
+  const handleThermalPrint = (method?: "ONLINE" | "OFFLINE") => {
+    printThermalReceipt(buildThermalData(method));
+  };
+
+  const handleDownloadPDF = async (method?: "ONLINE" | "OFFLINE") => {
+    setGeneratingPDF(true);
+    try {
+      const [{ pdf }, { FoodBillPDFDocument }, React] = await Promise.all([
+        import("@react-pdf/renderer"),
+        import("@/components/shared/food-bill-pdf-document"),
+        import("react"),
+      ]);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const blob = await pdf(
+        React.createElement(FoodBillPDFDocument as any, {
+          orders,
+          totals: {
+            grandTotal: totals.grandTotal,
+            grandSubtotal: totals.grandSubtotal,
+            grandTax: totals.grandTax,
+            grandDiscount: totals.grandDiscount,
+          },
+          businessName,
+          context,
+          tableNumber,
+          roomNumber,
+          paymentMethod: method,
+          sessionId,
+        }) as any
+      ).toBlob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `bill-${sessionId.slice(-8).toUpperCase()}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("PDF generation failed", e);
+      toast.error("PDF generation failed. Please try again.");
+    } finally {
+      setGeneratingPDF(false);
     }
   };
 
@@ -141,7 +215,7 @@ export function SessionBillClient({
   if (paid) {
     return (
       <div className="min-h-screen bg-gray-50 dark:bg-gray-950 flex items-center justify-center px-4">
-        <div className="text-center space-y-4 max-w-sm">
+        <div className="text-center space-y-4 max-w-sm w-full">
           <div className="w-20 h-20 bg-success-100 rounded-full flex items-center justify-center mx-auto">
             <CheckCircle className="h-10 w-10 text-success-500" />
           </div>
@@ -150,9 +224,37 @@ export function SessionBillClient({
           <p className="text-sm font-semibold text-gray-700 dark:text-gray-300">
             Total paid: {formatCurrency(totals.grandTotal)}
           </p>
+
+          {/* Bill actions */}
+          <div className="space-y-2 pt-2">
+            <button
+              onClick={() => handleDownloadPDF(usedPaymentMethod)}
+              disabled={generatingPDF}
+              className="w-full btn-primary flex items-center justify-center gap-2 py-3"
+            >
+              {generatingPDF ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <FileText className="h-4 w-4" />
+              )}
+              {generatingPDF ? "Generating PDF..." : "Download Bill (PDF)"}
+            </button>
+            <button
+              onClick={() => handleThermalPrint(usedPaymentMethod)}
+              className="w-full btn-secondary flex items-center justify-center gap-2 py-3"
+            >
+              <Printer className="h-4 w-4" />
+              Print Receipt
+            </button>
+          </div>
+
+          <p className="text-xs text-gray-400">
+            For thermal printers: select your printer and set paper to 80mm in the print dialog
+          </p>
+
           <a
             href={context === "restaurant" ? `/r/${businessSlug}` : `/h/${businessSlug}`}
-            className="btn-primary inline-block mt-4"
+            className="btn-secondary inline-block mt-2 w-full text-center"
           >
             Back to {businessName}
           </a>
@@ -275,6 +377,28 @@ export function SessionBillClient({
                     </label>
                   )}
                 </div>
+
+                {/* Pre-payment print option for offline */}
+                {paymentMethod === "OFFLINE" && (
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleThermalPrint()}
+                      className="flex-1 flex items-center justify-center gap-2 btn-secondary text-sm py-2"
+                    >
+                      <Printer className="h-3.5 w-3.5" />
+                      Print Bill
+                    </button>
+                    <button
+                      onClick={() => handleDownloadPDF()}
+                      disabled={generatingPDF}
+                      className="flex-1 flex items-center justify-center gap-2 btn-secondary text-sm py-2"
+                    >
+                      {generatingPDF ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <FileText className="h-3.5 w-3.5" />}
+                      {generatingPDF ? "..." : "Save PDF"}
+                    </button>
+                  </div>
+                )}
+
                 <button onClick={handlePay} disabled={paying} className="btn-primary w-full py-3 flex items-center justify-center gap-2">
                   {paying ? "Processing..." : `Pay ${formatCurrency(totals.unpaidTotal)}`}
                 </button>
@@ -282,13 +406,34 @@ export function SessionBillClient({
             )}
 
             {totals.unpaidTotal === 0 && (
-              <div className="card p-5 flex items-center gap-3 bg-success-50 dark:bg-success-900/20">
-                <CheckCircle className="h-6 w-6 text-success-500 flex-shrink-0" />
-                <div>
-                  <p className="font-semibold text-success-700 dark:text-success-400">All orders paid!</p>
-                  <p className="text-xs text-success-600 mt-0.5">Thank you for your visit.</p>
+              <>
+                <div className="card p-5 flex items-center gap-3 bg-success-50 dark:bg-success-900/20">
+                  <CheckCircle className="h-6 w-6 text-success-500 flex-shrink-0" />
+                  <div>
+                    <p className="font-semibold text-success-700 dark:text-success-400">All orders paid!</p>
+                    <p className="text-xs text-success-600 mt-0.5">Thank you for your visit.</p>
+                  </div>
                 </div>
-              </div>
+
+                {/* Download/print after all paid */}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => handleDownloadPDF()}
+                    disabled={generatingPDF}
+                    className="flex-1 flex items-center justify-center gap-2 btn-primary text-sm py-2.5"
+                  >
+                    {generatingPDF ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileText className="h-4 w-4" />}
+                    {generatingPDF ? "Generating..." : "Download PDF"}
+                  </button>
+                  <button
+                    onClick={() => handleThermalPrint()}
+                    className="flex-1 flex items-center justify-center gap-2 btn-secondary text-sm py-2.5"
+                  >
+                    <Printer className="h-4 w-4" />
+                    Print Receipt
+                  </button>
+                </div>
+              </>
             )}
           </>
         )}

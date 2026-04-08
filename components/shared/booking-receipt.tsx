@@ -1,8 +1,10 @@
 "use client";
 
-import { Download, MessageCircle } from "lucide-react";
+import { useState } from "react";
+import { Download, MessageCircle, Printer, FileText, Loader2 } from "lucide-react";
 import { formatDate } from "@/utils/formatDate";
 import { formatCurrency } from "@/utils/formatCurrency";
+import { printThermalReceipt } from "@/utils/thermalPrint";
 
 interface BookingReceiptProps {
   booking: {
@@ -42,6 +44,52 @@ function WhatsAppLink({ booking, businessName }: BookingReceiptProps) {
 
 export function BookingReceipt({ booking, businessName }: BookingReceiptProps) {
   const bookingId = `#${booking.id.slice(-8).toUpperCase()}`;
+  const [generatingPDF, setGeneratingPDF] = useState(false);
+
+  const handleDownloadPDF = async () => {
+    setGeneratingPDF(true);
+    try {
+      const [{ pdf }, { BookingPDFDocument }] = await Promise.all([
+        import("@react-pdf/renderer"),
+        import("@/components/shared/booking-pdf-document"),
+      ]);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const blob = await pdf(
+        (await import("react")).createElement(BookingPDFDocument as any, { booking, businessName }) as any
+      ).toBlob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `booking-${bookingId.replace("#", "")}.pdf`;
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      console.error("PDF generation failed", e);
+      window.print();
+    } finally {
+      setGeneratingPDF(false);
+    }
+  };
+
+  const handleThermalPrint = () => {
+    printThermalReceipt({
+      type: "booking",
+      businessName,
+      bookingId,
+      guestName: booking.guestName,
+      guestPhone: booking.guestPhone,
+      room: booking.room ? `${booking.room.name} #${booking.room.roomNumber}` : undefined,
+      checkIn: formatDate(booking.checkIn),
+      checkOut: formatDate(booking.checkOut),
+      nights: booking.nights,
+      subtotal: booking.totalAmount,
+      tax: booking.taxAmount ?? 0,
+      discount: booking.discountAmount ?? 0,
+      total: booking.finalAmount,
+      paymentStatus: booking.paymentStatus,
+      paymentMethod: booking.paymentMethod ?? "OFFLINE",
+    });
+  };
 
   return (
     <div className="text-left">
@@ -60,6 +108,12 @@ export function BookingReceipt({ booking, businessName }: BookingReceiptProps) {
           <div className="flex justify-between"><span>Check-in</span><strong>{formatDate(booking.checkIn)}</strong></div>
           <div className="flex justify-between"><span>Check-out</span><strong>{formatDate(booking.checkOut)}</strong></div>
           <div className="flex justify-between"><span>Nights</span><strong>{booking.nights}</strong></div>
+          {(booking.taxAmount ?? 0) > 0 && (
+            <div className="flex justify-between text-xs"><span>Tax</span><span>{formatCurrency(booking.taxAmount!)}</span></div>
+          )}
+          {(booking.discountAmount ?? 0) > 0 && (
+            <div className="flex justify-between text-xs text-success-600"><span>Discount</span><span>-{formatCurrency(booking.discountAmount!)}</span></div>
+          )}
           <div className="border-t border-gray-100 dark:border-gray-800 pt-2 flex justify-between font-bold text-gray-900 dark:text-white">
             <span>Total</span>
             <span className="text-primary-600 dark:text-primary-400">{formatCurrency(booking.finalAmount)}</span>
@@ -74,24 +128,41 @@ export function BookingReceipt({ booking, businessName }: BookingReceiptProps) {
       </div>
 
       {/* Actions */}
-      <div className="flex gap-3">
+      <div className="grid grid-cols-2 gap-2 mb-2">
         <a
           href={WhatsAppLink({ booking, businessName })}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex-1 flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 text-white text-sm font-medium py-2.5 rounded-xl transition-colors"
+          className="flex items-center justify-center gap-2 bg-green-500 hover:bg-green-600 text-white text-sm font-medium py-2.5 rounded-xl transition-colors"
         >
           <MessageCircle className="h-4 w-4" />
           WhatsApp
         </a>
         <button
-          onClick={() => window.print()}
-          className="flex-1 flex items-center justify-center gap-2 btn-secondary text-sm"
+          onClick={handleDownloadPDF}
+          disabled={generatingPDF}
+          className="flex items-center justify-center gap-2 btn-primary text-sm py-2.5"
         >
-          <Download className="h-4 w-4" />
-          Download
+          {generatingPDF ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <FileText className="h-4 w-4" />
+          )}
+          {generatingPDF ? "Generating..." : "Download PDF"}
         </button>
       </div>
+
+      <button
+        onClick={handleThermalPrint}
+        className="w-full flex items-center justify-center gap-2 btn-secondary text-sm py-2.5"
+      >
+        <Printer className="h-4 w-4" />
+        Print Receipt (Thermal/Laser)
+      </button>
+
+      <p className="text-xs text-gray-400 text-center mt-2">
+        For thermal printers: select your printer in the print dialog and set paper size to 80mm or 58mm
+      </p>
     </div>
   );
 }
