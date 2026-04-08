@@ -1,3 +1,5 @@
+import toast from "react-hot-toast";
+
 /**
  * Thermal receipt printing utility.
  *
@@ -308,7 +310,7 @@ export function printThermalReceipt(
 
   const win = window.open("", "_blank", `width=${previewWidthPx + 32},height=720,scrollbars=yes`);
   if (!win) {
-    alert("Please allow popups to print the receipt.");
+    toast.error("Please allow popups to print the receipt.");
     return;
   }
   win.document.open();

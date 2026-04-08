@@ -4,6 +4,7 @@ import { useState } from "react";
 import { format } from "date-fns";
 import toast from "react-hot-toast";
 import { CheckCircle, XCircle, Clock, CreditCard, Zap, Crown, RefreshCw, AlertTriangle } from "lucide-react";
+import { ConfirmModal } from "@/components/ui/modal";
 
 interface Business {
   id: string;
@@ -52,6 +53,7 @@ const PLANS = [
 
 export function BillingClient({ business }: { business: Business }) {
   const [loading, setLoading] = useState<string | null>(null);
+  const [cancelConfirmOpen, setCancelConfirmOpen] = useState(false);
 
   const status = business.subscriptionStatus;
   const isActive = status === "ACTIVE";
@@ -101,7 +103,6 @@ export function BillingClient({ business }: { business: Business }) {
   };
 
   const handleCancel = async () => {
-    if (!confirm("Are you sure you want to cancel your subscription? You will lose access at the end of the billing period.")) return;
     setLoading("cancel");
     try {
       const res = await fetch("/api/subscriptions/cancel", { method: "POST" });
@@ -120,6 +121,17 @@ export function BillingClient({ business }: { business: Business }) {
 
   return (
     <div className="space-y-6">
+      <ConfirmModal
+        isOpen={cancelConfirmOpen}
+        onClose={() => setCancelConfirmOpen(false)}
+        onConfirm={() => { setCancelConfirmOpen(false); handleCancel(); }}
+        title="Cancel Subscription"
+        description="Are you sure you want to cancel your subscription? You will lose access at the end of the billing period."
+        confirmLabel="Cancel Subscription"
+        cancelLabel="Keep Plan"
+        variant="danger"
+        loading={loading === "cancel"}
+      />
       {/* Current Status */}
       <div className="card p-5">
         <h3 className="font-semibold text-gray-900 dark:text-white text-sm mb-4">Current Plan</h3>
@@ -175,7 +187,7 @@ export function BillingClient({ business }: { business: Business }) {
 
         {isActive && (
           <button
-            onClick={handleCancel}
+            onClick={() => setCancelConfirmOpen(true)}
             disabled={loading === "cancel"}
             className="mt-4 text-xs text-danger-600 hover:underline flex items-center gap-1"
           >

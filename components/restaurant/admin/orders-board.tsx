@@ -44,9 +44,13 @@ interface ExtendedOrder extends Record<string, unknown> {
 function OrderCard({
   order,
   onStatusChange,
+  onDownloadBill,
+  onPrintBill,
 }: {
   order: ExtendedOrder;
   onStatusChange: (id: string, status: OrderStatus) => void;
+  onDownloadBill?: (sessionId: string) => void;
+  onPrintBill?: (order: ExtendedOrder) => void;
 }) {
   const minutes = differenceInMinutes(new Date(), new Date(order.createdAt));
   const isLate = minutes > 20;
@@ -123,6 +127,27 @@ function OrderCard({
           </button>
         )}
       </div>
+
+      {order.sessionId && (
+        <div className="flex gap-1 mt-2 pt-2 border-t border-gray-100 dark:border-gray-800">
+          <button
+            onClick={() => onDownloadBill?.(order.sessionId!)}
+            title="Download full session bill (A4 PDF)"
+            className="flex-1 flex items-center justify-center gap-1 text-xs text-gray-500 hover:text-primary-600 transition-colors py-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
+          >
+            <FileText className="h-3 w-3" />
+            Bill PDF
+          </button>
+          <button
+            onClick={() => onPrintBill?.(order)}
+            title="Print session receipt"
+            className="flex-1 flex items-center justify-center gap-1 text-xs text-gray-500 hover:text-primary-600 transition-colors py-1 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-800"
+          >
+            <Printer className="h-3 w-3" />
+            Print
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -455,7 +480,13 @@ export function OrdersBoard({ businessId, initialOrders }: OrdersBoardProps) {
                 </div>
                 <div className="space-y-2">
                   {colOrders.map((order) => (
-                    <OrderCard key={order.id} order={order} onStatusChange={updateStatus} />
+                    <OrderCard
+                      key={order.id}
+                      order={order}
+                      onStatusChange={updateStatus}
+                      onDownloadBill={(sessionId) => downloadSessionBill(sessionId, "a4")}
+                      onPrintBill={printSessionBill}
+                    />
                   ))}
                   {colOrders.length === 0 && (
                     <p className="text-xs text-gray-400 text-center py-6">No orders</p>

@@ -5,6 +5,7 @@ import Link from "next/link";
 import { format } from "date-fns";
 import toast from "react-hot-toast";
 import { Search, Eye, Trash2, Building2, CheckCircle, Clock, XCircle } from "lucide-react";
+import { ConfirmModal } from "@/components/ui/modal";
 
 interface Business {
   id: string;
@@ -32,6 +33,7 @@ export function AdminBusinessesClient({ businesses: initial }: { businesses: Bus
   const [businesses, setBusinesses] = useState(initial);
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [deleteConfirm, setDeleteConfirm] = useState<{ id: string; name: string } | null>(null);
 
   const filtered = businesses.filter((b) => {
     const q = search.toLowerCase();
@@ -40,8 +42,7 @@ export function AdminBusinessesClient({ businesses: initial }: { businesses: Bus
     return matchSearch && matchStatus;
   });
 
-  const deleteBusiness = async (id: string, name: string) => {
-    if (!confirm(`Permanently delete "${name}" and all its data? This cannot be undone.`)) return;
+  const deleteBusiness = async (id: string) => {
     try {
       const res = await fetch(`/api/businesses/${id}`, { method: "DELETE" });
       if (res.ok) {
@@ -75,6 +76,16 @@ export function AdminBusinessesClient({ businesses: initial }: { businesses: Bus
           <option value="EXPIRED">Expired</option>
         </select>
       </div>
+
+      <ConfirmModal
+        isOpen={!!deleteConfirm}
+        onClose={() => setDeleteConfirm(null)}
+        onConfirm={() => { deleteBusiness(deleteConfirm!.id); setDeleteConfirm(null); }}
+        title="Delete Business"
+        description={`Permanently delete "${deleteConfirm?.name}" and all its data? This cannot be undone.`}
+        confirmLabel="Delete"
+        variant="danger"
+      />
 
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
@@ -139,7 +150,7 @@ export function AdminBusinessesClient({ businesses: initial }: { businesses: Bus
                           <Eye className="h-4 w-4" />
                         </Link>
                         <button
-                          onClick={() => deleteBusiness(b.id, b.name)}
+                          onClick={() => setDeleteConfirm({ id: b.id, name: b.name })}
                           className="text-gray-400 hover:text-danger-500 transition-colors"
                         >
                           <Trash2 className="h-4 w-4" />

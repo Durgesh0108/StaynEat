@@ -7,7 +7,7 @@ import { z } from "zod";
 import { format, startOfMonth, endOfMonth, subMonths } from "date-fns";
 import toast from "react-hot-toast";
 import { Plus, Trash2, Receipt, TrendingDown, Filter } from "lucide-react";
-import { Modal } from "@/components/ui/modal";
+import { Modal, ConfirmModal } from "@/components/ui/modal";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from "recharts";
 
 const CATEGORIES = [
@@ -44,6 +44,7 @@ export function ExpensesClient({ businessId, initialExpenses }: { businessId: st
   const [expenses, setExpenses] = useState(initialExpenses);
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState<string | null>(null);
+  const [deleteExpenseId, setDeleteExpenseId] = useState<string | null>(null);
   const [filterCategory, setFilterCategory] = useState<string>("all");
   const [filterMonth, setFilterMonth] = useState<string>(format(new Date(), "yyyy-MM"));
 
@@ -99,7 +100,6 @@ export function ExpensesClient({ businessId, initialExpenses }: { businessId: st
   };
 
   const deleteExpense = async (id: string) => {
-    if (!confirm("Delete this expense?")) return;
     setLoading(`delete-${id}`);
     try {
       await fetch(`/api/expenses/${id}`, { method: "DELETE" });
@@ -211,7 +211,7 @@ export function ExpensesClient({ businessId, initialExpenses }: { businessId: st
                   -₹{expense.amount.toLocaleString()}
                 </span>
                 <button
-                  onClick={() => deleteExpense(expense.id)}
+                  onClick={() => setDeleteExpenseId(expense.id)}
                   disabled={loading === `delete-${expense.id}`}
                   className="text-gray-400 hover:text-danger-500 transition-colors shrink-0"
                 >
@@ -222,6 +222,16 @@ export function ExpensesClient({ businessId, initialExpenses }: { businessId: st
           </div>
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={!!deleteExpenseId}
+        onClose={() => setDeleteExpenseId(null)}
+        onConfirm={() => { const id = deleteExpenseId!; setDeleteExpenseId(null); deleteExpense(id); }}
+        title="Delete Expense"
+        description="Are you sure you want to delete this expense? This cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+      />
 
       <Modal isOpen={showModal} onClose={() => { setShowModal(false); reset(); }} title="Add Expense">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

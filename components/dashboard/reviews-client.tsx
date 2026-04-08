@@ -4,6 +4,7 @@ import { useState } from "react";
 import { format } from "date-fns";
 import toast from "react-hot-toast";
 import { Star, Trash2, CheckCircle, MessageSquare, Flag } from "lucide-react";
+import { ConfirmModal } from "@/components/ui/modal";
 
 interface Review {
   id: string;
@@ -19,6 +20,7 @@ export function ReviewsClient({ reviews: initial, businessId }: { reviews: Revie
   const [reviews, setReviews] = useState(initial);
   const [replyText, setReplyText] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState<string | null>(null);
+  const [deleteReviewId, setDeleteReviewId] = useState<string | null>(null);
 
   void businessId; // used for context
 
@@ -29,7 +31,6 @@ export function ReviewsClient({ reviews: initial, businessId }: { reviews: Revie
   const avgRating = reviews.length > 0 ? reviews.reduce((s, r) => s + r.rating, 0) / reviews.length : 0;
 
   const deleteReview = async (id: string) => {
-    if (!confirm("Delete this review?")) return;
     setLoading(`delete-${id}`);
     try {
       const res = await fetch(`/api/reviews/${id}`, { method: "DELETE" });
@@ -99,6 +100,15 @@ export function ReviewsClient({ reviews: initial, businessId }: { reviews: Revie
 
   return (
     <div className="space-y-5">
+      <ConfirmModal
+        isOpen={!!deleteReviewId}
+        onClose={() => setDeleteReviewId(null)}
+        onConfirm={() => { const id = deleteReviewId!; setDeleteReviewId(null); deleteReview(id); }}
+        title="Delete Review"
+        description="Are you sure you want to delete this review? This cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+      />
       {/* Summary */}
       {reviews.length > 0 && (
         <div className="card p-5">
@@ -166,7 +176,7 @@ export function ReviewsClient({ reviews: initial, businessId }: { reviews: Revie
                     <CheckCircle className="h-4 w-4" />
                   </button>
                   <button
-                    onClick={() => deleteReview(review.id)}
+                    onClick={() => setDeleteReviewId(review.id)}
                     disabled={loading === `delete-${review.id}`}
                     className="text-gray-400 hover:text-danger-500 transition-colors"
                   >

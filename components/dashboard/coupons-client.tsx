@@ -7,7 +7,7 @@ import { z } from "zod";
 import { format } from "date-fns";
 import toast from "react-hot-toast";
 import { Plus, Tag, Trash2, ToggleLeft, ToggleRight, Copy } from "lucide-react";
-import { Modal } from "@/components/ui/modal";
+import { Modal, ConfirmModal } from "@/components/ui/modal";
 
 const schema = z.object({
   code: z.string().min(3).max(20).toUpperCase(),
@@ -45,6 +45,7 @@ export function CouponsClient({ businessId, initialCoupons }: CouponsClientProps
   const [coupons, setCoupons] = useState(initialCoupons);
   const [showModal, setShowModal] = useState(false);
   const [loading, setLoading] = useState<string | null>(null);
+  const [deleteCouponId, setDeleteCouponId] = useState<string | null>(null);
 
   const { register, handleSubmit, reset, watch, formState: { errors } } = useForm<FormData>({
     resolver: zodResolver(schema),
@@ -100,7 +101,6 @@ export function CouponsClient({ businessId, initialCoupons }: CouponsClientProps
   };
 
   const deleteCoupon = async (id: string) => {
-    if (!confirm("Delete this coupon?")) return;
     setLoading(`delete-${id}`);
     try {
       const res = await fetch(`/api/coupons/${id}`, { method: "DELETE" });
@@ -192,7 +192,7 @@ export function CouponsClient({ businessId, initialCoupons }: CouponsClientProps
                         )}
                       </button>
                       <button
-                        onClick={() => deleteCoupon(coupon.id)}
+                        onClick={() => setDeleteCouponId(coupon.id)}
                         disabled={loading === `delete-${coupon.id}`}
                         className="text-gray-400 hover:text-danger-500 transition-colors"
                       >
@@ -206,6 +206,16 @@ export function CouponsClient({ businessId, initialCoupons }: CouponsClientProps
           })}
         </div>
       )}
+
+      <ConfirmModal
+        isOpen={!!deleteCouponId}
+        onClose={() => setDeleteCouponId(null)}
+        onConfirm={() => { const id = deleteCouponId!; setDeleteCouponId(null); deleteCoupon(id); }}
+        title="Delete Coupon"
+        description="Are you sure you want to delete this coupon? This cannot be undone."
+        confirmLabel="Delete"
+        variant="danger"
+      />
 
       <Modal isOpen={showModal} onClose={() => { setShowModal(false); reset(); }} title="Create Coupon">
         <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">

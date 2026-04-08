@@ -6,7 +6,7 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { formatDate } from "@/utils/formatDate";
 import { formatCurrency } from "@/utils/formatCurrency";
 import { BookingStatus } from "@/types";
-import { Modal } from "@/components/ui/modal";
+import { Modal, ConfirmModal } from "@/components/ui/modal";
 import toast from "react-hot-toast";
 import { format, addDays } from "date-fns";
 import {
@@ -63,6 +63,7 @@ export function BookingsManagement({ businessId, initialBookings }: BookingsMana
   const [extendModalOpen, setExtendModalOpen] = useState(false);
   const [newCheckOut, setNewCheckOut] = useState("");
   const [extendLoading, setExtendLoading] = useState(false);
+  const [earlyCheckoutBooking, setEarlyCheckoutBooking] = useState<ExtendedBooking | null>(null);
   const [pdfLoading, setPdfLoading] = useState(false);
   const [receiptPaperSize, setReceiptPaperSize] = useState<ThermalPaperSize>("80mm");
 
@@ -106,11 +107,8 @@ export function BookingsManagement({ businessId, initialBookings }: BookingsMana
     }
   };
 
-  const earlyCheckout = async (booking: ExtendedBooking) => {
-    const today = format(new Date(), "yyyy-MM-dd");
-    if (confirm(`Set check-out to today (${today}) for ${booking.guestName}?`)) {
-      await updateCheckOut(booking.id, today);
-    }
+  const earlyCheckout = (booking: ExtendedBooking) => {
+    setEarlyCheckoutBooking(booking);
   };
 
   const updatePaymentStatus = async (booking: ExtendedBooking, paymentStatus: string) => {
@@ -317,35 +315,6 @@ export function BookingsManagement({ businessId, initialBookings }: BookingsMana
         onRowClick={(row) => setDetailBooking(row)}
         emptyMessage="No bookings found"
       />
-
-      {/* Extend Stay Modal */}
-      <Modal isOpen={extendModalOpen} onClose={() => setExtendModalOpen(false)} title="Extend Stay" size="sm">
-        <div className="p-5 space-y-4">
-          <p className="text-sm text-gray-500">
-            Current check-out: <strong>{detailBooking ? formatDate(detailBooking.checkOut) : "—"}</strong>
-          </p>
-          <div>
-            <label className="label">New Check-out Date</label>
-            <input
-              type="date"
-              value={newCheckOut}
-              min={format(addDays(new Date(detailBooking?.checkOut ?? new Date()), 1), "yyyy-MM-dd")}
-              onChange={(e) => setNewCheckOut(e.target.value)}
-              className="input"
-            />
-          </div>
-          <div className="flex gap-3 pt-2 border-t border-gray-100 dark:border-gray-800">
-            <button onClick={() => setExtendModalOpen(false)} className="btn-secondary flex-1">Cancel</button>
-            <button
-              onClick={() => detailBooking && updateCheckOut(detailBooking.id, newCheckOut)}
-              disabled={!newCheckOut || extendLoading}
-              className="btn-primary flex-1"
-            >
-              {extendLoading ? "Saving..." : "Confirm Extension"}
-            </button>
-          </div>
-        </div>
-      </Modal>
 
       {/* Detail Modal */}
       <Modal
@@ -560,6 +529,50 @@ export function BookingsManagement({ businessId, initialBookings }: BookingsMana
           </div>
         )}
       </Modal>
+
+      {/* Extend Stay Modal — rendered after Detail Modal so it appears on top */}
+      <Modal isOpen={extendModalOpen} onClose={() => setExtendModalOpen(false)} title="Extend Stay" size="sm">
+        <div className="p-5 space-y-4">
+          <p className="text-sm text-gray-500">
+            Current check-out: <strong>{detailBooking ? formatDate(detailBooking.checkOut) : "—"}</strong>
+          </p>
+          <div>
+            <label className="label">New Check-out Date</label>
+            <input
+              type="date"
+              value={newCheckOut}
+              min={format(addDays(new Date(detailBooking?.checkOut ?? new Date()), 1), "yyyy-MM-dd")}
+              onChange={(e) => setNewCheckOut(e.target.value)}
+              className="input"
+            />
+          </div>
+          <div className="flex gap-3 pt-2 border-t border-gray-100 dark:border-gray-800">
+            <button onClick={() => setExtendModalOpen(false)} className="btn-secondary flex-1">Cancel</button>
+            <button
+              onClick={() => detailBooking && updateCheckOut(detailBooking.id, newCheckOut)}
+              disabled={!newCheckOut || extendLoading}
+              className="btn-primary flex-1"
+            >
+              {extendLoading ? "Saving..." : "Confirm Extension"}
+            </button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Early Check-out Confirm Modal */}
+      <ConfirmModal
+        isOpen={!!earlyCheckoutBooking}
+        onClose={() => setEarlyCheckoutBooking(null)}
+        onConfirm={() => {
+          const booking = earlyCheckoutBooking!;
+          setEarlyCheckoutBooking(null);
+          updateCheckOut(booking.id, format(new Date(), "yyyy-MM-dd"));
+        }}
+        title="Early Check-out"
+        description={`Set check-out to today (${format(new Date(), "yyyy-MM-dd")}) for ${earlyCheckoutBooking?.guestName ?? "this guest"}?`}
+        confirmLabel="Confirm Check-out"
+        variant="primary"
+      />
     </>
   );
 }
